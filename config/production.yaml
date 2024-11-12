@@ -4,8 +4,19 @@ logger:
   format: compact
 
 server:
+  binding: 0.0.0.0
   port: 5150
-  host: localhost
+  host: http://0.0.0.0
+
+  middlewares:
+    static:
+      enable: true
+      must_exist: true
+      precompressed: false
+      folder:
+        uri: "/static"
+        path: "assets/static"
+      fallback: "assets/static/404.html"
 
 workers:
   mode: BackgroundAsync
