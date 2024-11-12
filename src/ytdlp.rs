@@ -190,6 +190,10 @@ pub async fn download_media(
         .arg(format!("--paths={}", source_dir.display()))
         .arg("--max-downloads=1")
         .arg("--no-simulate")
+        .arg("--remux-video=mkv")
+        .arg("--embed-metadata")
+        .arg("--embed-subs")
+        .arg("--embed-thumbnail")
         .arg(url)
         .output()
         .await?;
