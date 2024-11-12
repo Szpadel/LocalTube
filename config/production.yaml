@@ -5,6 +5,7 @@ logger:
 
 server:
   port: 5150
+  host: localhost
 
 workers:
   mode: BackgroundAsync
@@ -13,3 +14,8 @@ database:
   # Database connection URI
   uri: {{ get_env(name="DATABASE_URL", default="sqlite://localtube.sqlite?mode=rwc") }}
   auto_migrate: true
+  enable_logging: false
+  min_connections: 1
+  max_connections: 1
+  connect_timeout: 500
+  idle_timeout: 500
