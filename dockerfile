@@ -21,4 +21,3 @@ COPY --from=builder /usr/src/config /usr/app/config
 COPY --from=builder /usr/src/target/release/localtube-cli /usr/app/localtube-cli
 
 ENTRYPOINT ["/usr/app/localtube-cli"]
-`
