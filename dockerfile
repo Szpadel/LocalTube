@@ -12,7 +12,7 @@ RUN cargo build --release
 FROM debian:bookworm-slim
 
 # Install OpenSSL runtime libraries
-RUN apt-get update && apt-get install -y libssl3 ca-certificates tini curl
+RUN apt-get update && apt-get install -y libssl3 ca-certificates tini curl ffmpeg
 
 WORKDIR /usr/app
 
