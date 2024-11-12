@@ -12,7 +12,7 @@ RUN cargo build --release
 FROM debian:bookworm-slim
 
 # Install OpenSSL runtime libraries
-RUN apt-get update && apt-get install -y libssl3
+RUN apt-get update && apt-get install -y libssl3 ca-certificates
 
 WORKDIR /usr/app
 
