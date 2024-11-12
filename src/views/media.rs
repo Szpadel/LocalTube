@@ -7,7 +7,10 @@ use crate::models::_entities::{medias, sources};
 /// # Errors
 ///
 /// When there is an issue with rendering the view.
-pub fn list(v: &impl ViewRenderer, items: &[(medias::Model, Option<sources::Model>)]) -> Result<Response> {
+pub fn list(
+    v: &impl ViewRenderer,
+    items: &[(medias::Model, Option<sources::Model>)],
+) -> Result<Response> {
     format::render().view(v, "media/list.html", data!({"items": items}))
 }
 
@@ -16,9 +19,17 @@ pub fn list(v: &impl ViewRenderer, items: &[(medias::Model, Option<sources::Mode
 /// # Errors
 ///
 /// When there is an issue with rendering the view.
-pub fn show(v: &impl ViewRenderer, item: &medias::Model, source: Option<&sources::Model>) -> Result<Response> {
-    format::render().view(v, "media/show.html", data!({
-        "item": item,
-        "source": source
-    }))
+pub fn show(
+    v: &impl ViewRenderer,
+    item: &medias::Model,
+    source: Option<&sources::Model>,
+) -> Result<Response> {
+    format::render().view(
+        v,
+        "media/show.html",
+        data!({
+            "item": item,
+            "source": source
+        }),
+    )
 }

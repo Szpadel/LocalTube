@@ -3,7 +3,7 @@
 #![allow(clippy::unused_async)]
 use axum::debug_handler;
 use loco_rs::prelude::*;
-use sea_orm::{sea_query::Order, QueryOrder, EntityTrait};
+use sea_orm::{sea_query::Order, EntityTrait, QueryOrder};
 
 use crate::{
     models::_entities::medias::{Column, Entity, Model},
@@ -18,7 +18,8 @@ async fn load_item(
         .find_with_related(crate::models::_entities::sources::Entity)
         .all(&ctx.db)
         .await?;
-    items.into_iter()
+    items
+        .into_iter()
         .next()
         .map(|(media, sources)| (media, sources.into_iter().next()))
         .ok_or_else(|| Error::NotFound)

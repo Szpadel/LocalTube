@@ -55,7 +55,9 @@ impl Hooks for App {
     }
 
     async fn connect_workers(ctx: &AppContext, queue: &Queue) -> Result<()> {
-        queue.register(crate::workers::fetch_media::FetchMediaWorker::build(ctx)).await?;
+        queue
+            .register(crate::workers::fetch_media::FetchMediaWorker::build(ctx))
+            .await?;
         queue
             .register(crate::workers::fetch_source_info::FetchSourceInfoWorker::build(ctx))
             .await?;

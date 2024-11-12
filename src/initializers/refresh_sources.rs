@@ -16,7 +16,9 @@ impl Initializer for RefreshSources {
     }
 
     async fn before_run(&self, ctx: &AppContext) -> Result<()> {
-        (RefreshIndexes).run(ctx, &loco_rs::task::Vars::default()).await?;
+        (RefreshIndexes)
+            .run(ctx, &loco_rs::task::Vars::default())
+            .await?;
 
         Ok(())
     }

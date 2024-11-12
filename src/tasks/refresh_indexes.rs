@@ -15,12 +15,13 @@ impl Task for RefreshIndexes {
         let sources = crate::models::sources::Sources::find().all(&ctx.db).await?;
 
         for source in sources {
-            let jitter = source.last_refreshed_at.map_or(0, |last_refresh| {
-                (last_refresh.timestamp() % 1800) - 900
-            });
+            let jitter = source
+                .last_refreshed_at
+                .map_or(0, |last_refresh| (last_refresh.timestamp() % 1800) - 900);
 
             let need_refresh = source.last_refreshed_at.map_or(true, |d| {
-                (chrono::Utc::now() - d).num_seconds() > i64::from(source.refresh_frequency * 3600) + jitter
+                (chrono::Utc::now() - d).num_seconds()
+                    > i64::from(source.refresh_frequency * 3600) + jitter
             });
 
             if source.get_metadata().is_none() || need_refresh {

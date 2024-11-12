@@ -153,7 +153,11 @@ impl BackgroundWorker<FetchSourceInfoWorkerArgs> for FetchSourceInfoWorker {
                             for path in [&info_path, &base_path] {
                                 if path.exists() {
                                     std::fs::remove_file(path).map_err(|e| {
-                                        Error::string(&format!("Failed to remove file {}: {}", path.display(), e))
+                                        Error::string(&format!(
+                                            "Failed to remove file {}: {}",
+                                            path.display(),
+                                            e
+                                        ))
                                     })?;
                                 }
                             }
@@ -171,10 +175,7 @@ impl BackgroundWorker<FetchSourceInfoWorkerArgs> for FetchSourceInfoWorker {
             crate::models::sources::Sources::update(source_update)
                 .exec(&self.ctx.db)
                 .await?;
-            info!(
-                "{}: Finished source reindex",
-                source_metadata.uploader
-            );
+            info!("{}: Finished source reindex", source_metadata.uploader);
         }
 
         Ok(())

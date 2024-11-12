@@ -48,14 +48,13 @@ static MEDIA_DIRECTORY: OnceLock<PathBuf> = OnceLock::new();
 #[must_use]
 pub fn media_directory() -> &'static PathBuf {
     MEDIA_DIRECTORY.get_or_init(|| {
-        std::env::var("LOCALTUBE_MEDIA_DIR")
-            .map_or_else(
-                |_| {
-                    warn!("Warning: LOCALTUBE_MEDIA_DIR not set, using default: media");
-                    PathBuf::from("media")
-                },
-                PathBuf::from,
-            )
+        std::env::var("LOCALTUBE_MEDIA_DIR").map_or_else(
+            |_| {
+                warn!("Warning: LOCALTUBE_MEDIA_DIR not set, using default: media");
+                PathBuf::from("media")
+            },
+            PathBuf::from,
+        )
     })
 }
 
@@ -151,7 +150,6 @@ pub async fn stream_media_list(url: &str) -> tokio::sync::mpsc::Receiver<VideoMe
                 break;
             }
         }
-
     });
     rx
 }

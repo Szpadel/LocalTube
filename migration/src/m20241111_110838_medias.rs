@@ -43,9 +43,7 @@ enum Medias {
     SourceId,
     Metadata,
     MediaPath,
-    
 }
-
 
 #[derive(DeriveIden)]
 enum Sources {

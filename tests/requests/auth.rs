@@ -1,6 +1,6 @@
 use insta::{assert_debug_snapshot, with_settings};
-use loco_rs::testing;
 use localtube::{app::App, models::users};
+use loco_rs::testing;
 use rstest::rstest;
 use serial_test::serial;
 

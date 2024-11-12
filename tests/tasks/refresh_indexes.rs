@@ -9,9 +9,11 @@ use serial_test::serial;
 async fn test_can_run_refresh_indexes() {
     let boot = testing::boot_test::<App>().await.unwrap();
 
-    assert!(
-        run_task::<App>(&boot.app_context, Some(&"refresh_indexes".to_string()), &task::Vars::default())
-            .await
-            .is_ok()
-    );
+    assert!(run_task::<App>(
+        &boot.app_context,
+        Some(&"refresh_indexes".to_string()),
+        &task::Vars::default()
+    )
+    .await
+    .is_ok());
 }
