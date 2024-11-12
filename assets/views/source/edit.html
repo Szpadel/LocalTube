@@ -21,7 +21,7 @@ Edit Source: {% if item.metadata %}
             <label class="block font-bold mb-2">Fetch Last Days</label>
             <input id="fetch_last_days" name="fetch_last_days" type="number" required value="{{ item.fetch_last_days }}" class="border border-gray-300 rounded w-full py-2 px-3">
         </div>
-        {{ shared::sponsorblock_checkboxes(item=item) }}
+        {{ shared::sponsorblock_checkboxes(sponsorblock=item.sponsorblock) }}
         <div class="mb-4">
             <label class="block font-bold mb-2">Refresh Frequency</label>
             <select id="refresh_frequency" name="refresh_frequency" required class="border border-gray-300 rounded w-full py-2 px-3">

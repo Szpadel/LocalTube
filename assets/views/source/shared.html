@@ -1,5 +1,5 @@
 
-{% macro sponsorblock_checkboxes(item) %}
+{% macro sponsorblock_checkboxes(sponsorblock) %}
 {% set sponsorblock_categories = [
 "sponsor|Sponsor",
 "intro|Intro",
@@ -14,19 +14,19 @@
 <div class="mb-4">
     <label class="block font-bold mb-2">Sponsorblock Categories</label>
     <div class="grid grid-cols-2 gap-4">
-        {% set sponsorblock_list = item.sponsorblock | split(pat=",") %}
+        {% set sponsorblock_list = sponsorblock | split(pat=",") %}
         {% for category_str in sponsorblock_categories %}
             {% set category = category_str | split(pat="|") %}
             <label class="flex items-center">
                 <input type="checkbox"
                        name="sponsorblock_{{ category.0 }}"
                        class="sponsorblock-category mr-2"
-                       {% if item and category.0 in sponsorblock_list %}checked{% endif %}>
+                       {% if category.0 in sponsorblock_list %}checked{% endif %}>
                 {{ category.1 }}
             </label>
         {% endfor %}
     </div>
-    <input type="hidden" id="sponsorblock" name="sponsorblock" value="{% if item %}{{ item.sponsorblock }}{% endif %}">
+    <input type="hidden" id="sponsorblock" name="sponsorblock" value="{{ sponsorblock }}">
 </div>
 {% endmacro %}
 
