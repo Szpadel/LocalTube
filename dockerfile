@@ -12,7 +12,7 @@ RUN cargo build --release
 FROM debian:bookworm-slim
 
 # Install OpenSSL runtime libraries
-RUN apt-get update && apt-get install -y libssl3 ca-certificates
+RUN apt-get update && apt-get install -y libssl3 ca-certificates tini
 
 WORKDIR /usr/app
 
@@ -21,4 +21,4 @@ COPY --from=builder /usr/src/assets/static /usr/app/assets/static
 COPY --from=builder /usr/src/config /usr/app/config
 COPY --from=builder /usr/src/target/release/localtube-cli /usr/app/localtube-cli
 
-ENTRYPOINT ["/usr/app/localtube-cli"]
+ENTRYPOINT ["tini", "/usr/app/localtube-cli"]
