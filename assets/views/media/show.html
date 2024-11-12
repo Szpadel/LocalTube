@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+
+{% block title %}
+{% if item.metadata %}View: {{ item.metadata.title }}{% else %}View Media{% endif %}
+{% endblock title %}
+
+{% block content %}
+<h1 class="text-3xl font-bold text-red-500 mb-6">
+    {% if item.metadata %}{{ item.metadata.title }}{% else %}Media Details{% endif %}
+</h1>
+<div class="bg-white rounded-lg shadow p-6 mb-10">
+    {% if item.metadata %}
+        {% set video = item.metadata %}
+        <div class="grid grid-cols-1 gap-4">
+            <p class="mb-2"><span class="font-bold">Uploader:</span>
+                {% if source and source.metadata %}
+                    <a href="/sources/{{ source.id }}" class="text-red-500 hover:underline">
+                        {{ source.metadata.uploader }}
+                    </a>
+                {% else %}
+                    Unknown
+                {% endif %}
+            </p>
+            {% if video.description %}
+                <div class="mb-4">
+                    <span class="font-bold">Description:</span>
+                    <p class="mt-2 text-gray-600 whitespace-pre-line">{{ video.description }}</p>
+                </div>
+            {% endif %}
+            <p class="mb-2"><span class="font-bold">Duration:</span> {{ video.duration / 60 | round }}m</p>
+            <p class="mb-2"><span class="font-bold">Platform:</span> {{ video.extractor_key }}</p>
+            <p class="mb-2"><span class="font-bold">Original URL:</span> <a href="{{ video.original_url }}" class="text-red-500 hover:underline" target="_blank">{{ video.original_url }}</a></p>
+            <p class="mb-4"><span class="font-bold">Added:</span> {{ video.timestamp | date(format="%Y-%m-%d %H:%M:%S") }}</p>
+        </div>
+    {% else %}
+        <p class="text-gray-500">Metadata not available</p>
+    {% endif %}
+    {% if item.media_path %}
+        <p class="mb-4"><span class="font-bold">Local Path:</span> {{ item.media_path }}</p>
+    {% endif %}
+    <div class="mt-6">
+        <a href="/medias/{{ item.id }}/edit" class="text-red-500 hover:underline mr-4">Edit</a>
+        <a href="/medias" class="text-red-500 hover:underline">Back to Media Library</a>
+    </div>
+</div>
+{% endblock content %}

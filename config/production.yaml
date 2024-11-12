@@ -1,0 +1,15 @@
+logger:
+  enable: true
+  level: info
+  format: compact
+
+server:
+  port: 5150
+
+workers:
+  mode: BackgroundAsync
+
+database:
+  # Database connection URI
+  uri: {{ get_env(name="DATABASE_URL", default="sqlite://localtube.sqlite?mode=rwc") }}
+  auto_migrate: true

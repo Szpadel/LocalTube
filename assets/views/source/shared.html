@@ -1,0 +1,52 @@
+
+{% macro sponsorblock_checkboxes(item) %}
+{% set sponsorblock_categories = [
+"sponsor|Sponsor",
+"intro|Intro",
+"outro|Outro",
+"selfpromo|Self Promo",
+"preview|Preview",
+"filler|Filler",
+"interaction|Interaction",
+"music_offtopic|Music Offtopic"
+] %}
+
+<div class="mb-4">
+    <label class="block font-bold mb-2">Sponsorblock Categories</label>
+    <div class="grid grid-cols-2 gap-4">
+        {% set sponsorblock_list = item.sponsorblock | split(pat=",") %}
+        {% for category_str in sponsorblock_categories %}
+            {% set category = category_str | split(pat="|") %}
+            <label class="flex items-center">
+                <input type="checkbox"
+                       name="sponsorblock_{{ category.0 }}"
+                       class="sponsorblock-category mr-2"
+                       {% if item and category.0 in sponsorblock_list %}checked{% endif %}>
+                {{ category.1 }}
+            </label>
+        {% endfor %}
+    </div>
+    <input type="hidden" id="sponsorblock" name="sponsorblock" value="{% if item %}{{ item.sponsorblock }}{% endif %}">
+</div>
+{% endmacro %}
+
+{% macro sponsorblock_js() %}
+<script>
+    function updateSponsorblock() {
+        const categories = [];
+        document.querySelectorAll('.sponsorblock-category').forEach(checkbox => {
+            if (checkbox.checked) {
+                categories.push(checkbox.name.replace('sponsorblock_', ''));
+            }
+        });
+        document.getElementById('sponsorblock').value = categories.join(',');
+    }
+
+    document.querySelectorAll('.sponsorblock-category').forEach(checkbox => {
+        checkbox.addEventListener('change', updateSponsorblock);
+    });
+
+    // Initialize on page load
+    updateSponsorblock();
+</script>
+{% endmacro %}

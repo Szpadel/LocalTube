@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <title>{% block title %}{% endblock title %}</title>
+
+  <script src="https://unpkg.com/htmx.org@2.0.0/dist/htmx.min.js"></script>
+  <script src="https://cdn.tailwindcss.com?plugins=forms,typography,aspect-ratio,line-clamp"></script>
+  {% block head %}
+
+  {% endblock head %}
+</head>
+{% set hours_list = [1,2,3,4,6,12,24] %}
+
+<body class="bg-gray-50 text-gray-900 p-10">
+  <nav class="bg-white shadow mb-8 rounded-lg">
+    <div class="container mx-auto px-6 py-4">
+      <div class="flex items-center justify-between">
+        <div class="text-xl font-bold text-red-500">LocalTube</div>
+        <div class="flex space-x-8">
+          <a href="/sources" class="text-gray-700 hover:text-red-500">Sources</a>
+          <a href="/medias" class="text-gray-700 hover:text-red-500">Media Library</a>
+        </div>
+      </div>
+    </div>
+  </nav>
+
+  <div id="content" class="container mx-auto">
+    {% block content %}
+    {% endblock content %}
+  </div>
+
+  {% block js %}{% endblock js %}
+  <script>
+    htmx.defineExtension('submitjson', {
+        onEvent: function (name, evt) {
+            if (name === "htmx:configRequest") {
+                evt.detail.headers['Content-Type'] = "application/json"
+            }
+        },
+        encodeParameters: function (xhr, parameters, elt) {
+            const json = {};
+            for (const [key, value] of Object.entries(parameters)) {
+                const element = elt.querySelector(`[name=${key}]`);
+                const inputType = element.type;
+
+                if (inputType === 'number' ||
+                  (inputType === 'select-one' && !isNaN(element.value))
+                ) {
+                    json[key] = parseFloat(value);
+                } else if (inputType === 'checkbox') {
+                    json[key] = element.checked;
+                } else {
+                    json[key] = value;
+                }
+            }
+            return JSON.stringify(json);
+        }
+    });
+  </script>
+</body>
+
+</html>

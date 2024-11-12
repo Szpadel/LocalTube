@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+
+{% block title %}
+List of Sources
+{% endblock title %}
+
+{% block content %}
+<h1 class="text-3xl font-bold text-red-500 mb-6">Sources</h1>
+<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+    {% for item in items %}
+    <div class="bg-white rounded-lg shadow p-6">
+        <h2 class="text-xl font-semibold text-red-500 mb-4">
+            {% if item.metadata %}
+                {{ item.metadata.uploader }}
+            {% else %}
+                {{ item.url }}
+            {% endif %}
+        </h2>
+        {% if item.metadata %}
+            <p class="mb-2"><span class="font-bold">Video Count:</span> {{ item.metadata.items }}</p>
+            <p class="mb-2"><span class="font-bold">Source Provider:</span> {{ item.metadata.source_provider }}</p>
+        {% endif %}
+        <p class="mb-2"><span class="font-bold">Fetch Last Days:</span> {{ item.fetch_last_days }}</p>
+        <p class="mb-2"><span class="font-bold">Refresh Frequency:</span> {{ item.refresh_frequency }}h</p>
+        <p class="mb-4">
+            <span class="font-bold">Sponsorblock Categories:</span><br>
+            {% for category in item.sponsorblock | split(pat=",") %}
+            {% if category %}
+              <span class="inline-block bg-red-100 text-red-800 px-2 py-1 rounded mr-2 mt-1">{{ category }}</span>
+            {% endif %}
+            {% endfor %}
+        </p>
+        <div class="flex space-x-4">
+            <a href="/sources/{{ item.id }}/edit" class="text-red-500 hover:underline">Edit</a>
+            <a href="/sources/{{ item.id }}" class="text-red-500 hover:underline">View</a>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+<div class="mt-6">
+    <a href="/sources/new" class="text-red-500 hover:underline">New Source</a>
+</div>
+{% endblock content %}

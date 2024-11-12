@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% import "source/shared.html" as shared %}
+
+{% block title %}
+Create Source
+{% endblock title %}
+
+{% block content %}
+<h1 class="text-3xl font-bold text-red-500 mb-6">Create New Source</h1>
+<div class="bg-white rounded-lg shadow p-6 mb-10">
+    <form hx-post="/sources" hx-ext="submitjson">
+        <div class="mb-4">
+            <label class="block font-bold mb-2">URL</label>
+            <input id="url" name="url" type="text" value="" required class="border border-gray-300 rounded w-full py-2 px-3">
+        </div>
+        <div class="mb-4">
+            <label class="block font-bold mb-2">Fetch Last Days</label>
+            <input id="fetch_last_days" name="fetch_last_days" type="number" required class="border border-gray-300 rounded w-full py-2 px-3">
+        </div>
+        {{ shared::sponsorblock_checkboxes(item=none) }}
+        <div class="mb-4">
+            <label class="block font-bold mb-2">Refresh Frequency</label>
+            <select id="refresh_frequency" name="refresh_frequency" required class="border border-gray-300 rounded w-full py-2 px-3">
+                {% for hour in hours_list %}
+                    <option value="{{ hour }}" {% if hour == 4 %}selected{% endif %}>{{ hour }}h</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="flex space-x-4">
+            <button class="text-xs py-2 px-4 rounded bg-red-500 text-white" type="submit">Submit</button>
+        </div>
+    </form>
+</div>
+{% endblock content %}
+
+{% block js %}
+{{ shared::sponsorblock_js() }}
+{% endblock js %}

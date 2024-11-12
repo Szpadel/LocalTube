@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+
+{% block title %}
+Media Library
+{% endblock title %}
+
+{% block content %}
+<h1 class="text-3xl font-bold text-red-500 mb-6">Media Library</h1>
+<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+    {% for item in items %}
+    <div class="bg-white rounded-lg shadow p-6">
+        {% if item.0.metadata %}
+            {% set video = item.0.metadata %}
+            <h2 class="text-xl font-semibold text-red-500 mb-4">{{ video.title }}</h2>
+            <p class="mb-2"><span class="font-bold">Uploader:</span>
+                {% if item.1 and item.1.metadata %}
+                    <a href="/sources/{{ item.1.id }}" class="text-red-500 hover:underline">
+                        {{ item.1.metadata.uploader }}
+                    </a>
+                {% else %}
+                    Unknown
+                {% endif %}
+            </p>
+            {% if video.description %}
+                <p class="mb-2 text-sm text-gray-600 line-clamp-3">{{ video.description }}</p>
+            {% endif %}
+            <p class="mb-2"><span class="font-bold">Duration:</span> {{ video.duration / 60 | round }}m</p>
+            <p class="mb-2"><span class="font-bold">Platform:</span> {{ video.extractor_key }}</p>
+            <p class="mb-4"><span class="font-bold">Added:</span> {{ video.timestamp | date(format="%Y-%m-%d") }}</p>
+        {% else %}
+            <p class="text-gray-500">Metadata not available</p>
+        {% endif %}
+        <div class="flex space-x-4">
+            <a href="/medias/{{ item.0.id }}/edit" class="text-red-500 hover:underline">Edit</a>
+            <a href="/medias/{{ item.0.id }}" class="text-red-500 hover:underline">View</a>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+<div class="mt-6">
+    <a href="/medias/new" class="text-red-500 hover:underline">Add New Media</a>
+</div>
+{% endblock content %}
