@@ -1,5 +1,4 @@
 use loco_rs::prelude::*;
-use tracing::info;
 
 use crate::workers::fetch_source_info::{FetchSourceInfoWorker, FetchSourceInfoWorkerArgs};
 

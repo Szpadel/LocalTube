@@ -98,4 +98,3 @@ auth:
     secret: Uu0ddOleBK2qL77xVe6o
     # Token expiration time in seconds
     expiration: 604800 # 7 days
-

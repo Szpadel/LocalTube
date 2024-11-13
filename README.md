@@ -10,4 +10,3 @@ LocalTube is a web-based GUI for yt-dlp that automatically monitors and manages 
 - 🎬 SponsorBlock integration with selectable sections
 - 🌐 Web-based user interface
 - 📺 Support for multiple video platforms (via yt-dlp)
-
