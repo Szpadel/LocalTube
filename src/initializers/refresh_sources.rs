@@ -1,3 +1,5 @@
+use std::vec;
+
 use axum::async_trait;
 use loco_rs::{
     app::{AppContext, Initializer},
@@ -17,7 +19,13 @@ impl Initializer for RefreshSources {
 
     async fn before_run(&self, ctx: &AppContext) -> Result<()> {
         (RefreshIndexes)
-            .run(ctx, &loco_rs::task::Vars::default())
+            .run(
+                ctx,
+                &loco_rs::task::Vars::from_cli_args(vec![(
+                    "force".to_string(),
+                    "true".to_string(),
+                )]),
+            )
             .await?;
 
         Ok(())

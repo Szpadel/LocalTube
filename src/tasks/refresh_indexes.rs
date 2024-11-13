@@ -11,7 +11,7 @@ impl Task for RefreshIndexes {
             detail: "Refresh source indexes".to_string(),
         }
     }
-    async fn run(&self, ctx: &AppContext, _vars: &task::Vars) -> Result<()> {
+    async fn run(&self, ctx: &AppContext, vars: &task::Vars) -> Result<()> {
         let sources = crate::models::sources::Sources::find().all(&ctx.db).await?;
 
         for source in sources {
@@ -24,7 +24,7 @@ impl Task for RefreshIndexes {
                     > i64::from(source.refresh_frequency * 3600) + jitter
             });
 
-            if source.get_metadata().is_none() || need_refresh {
+            if source.get_metadata().is_none() || need_refresh || vars.cli_arg("force").is_ok() {
                 FetchSourceInfoWorker::perform_later(
                     ctx,
                     FetchSourceInfoWorkerArgs {
