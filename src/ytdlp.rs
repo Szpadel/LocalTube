@@ -189,7 +189,14 @@ pub async fn download_media(
         .arg("--dump-json")
         .arg("--restrict-filenames")
         .arg("--write-info-json")
-        .arg(format!("--sponsorblock-remove={}", if sponsorblock.is_empty() { "-all" } else { &sponsorblock }))
+        .arg(format!(
+            "--sponsorblock-remove={}",
+            if sponsorblock.is_empty() {
+                "-all"
+            } else {
+                &sponsorblock
+            }
+        ))
         .arg(format!("--paths={}", source_dir.display()))
         .arg("--max-downloads=1")
         .arg("--no-simulate")
