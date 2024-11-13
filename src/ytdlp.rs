@@ -183,10 +183,17 @@ pub async fn download_media(
         .ok_or_else(|| Error::string("Missing source metadata"))?;
     let source_dir = media_dir.join(source_name);
     tokio::fs::create_dir_all(&source_dir).await?;
+    // we reserialize to ensure we have only valid input
+    let sponsorblock = source.get_sponsorblock_categories().serialize();
     let output = Command::new(yt_dlp_path())
         .arg("--dump-json")
         .arg("--restrict-filenames")
         .arg("--write-info-json")
+        .args(if sponsorblock.is_empty() {
+            Vec::new()
+        } else {
+            vec![format!("--sponsorblock-remove={}", sponsorblock)]
+        })
         .arg(format!("--paths={}", source_dir.display()))
         .arg("--max-downloads=1")
         .arg("--no-simulate")
