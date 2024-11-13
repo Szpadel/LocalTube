@@ -209,7 +209,20 @@ pub async fn download_media(
         .await?;
 
     let video_metadata: VideoMetadata = serde_json::from_slice(&output.stdout)?;
-    Ok(PathBuf::from(&video_metadata.filename)
+
+    // yt-dlp do not report remuxed file path, we need to check if it exists
+    // check if video_metadata.filename with .mkv extension exists if not check if video_metadata.filename exists
+    // use existing file if it exists, error out if none exists
+    let video_path = PathBuf::from(&video_metadata.filename);
+    let video_path = if video_path.with_extension("mkv").exists() {
+        video_path.with_extension("mkv")
+    } else if video_path.exists() {
+        video_path
+    } else {
+        return Err(Error::string("Failed to download media"));
+    };
+
+    Ok(PathBuf::from(&video_path)
         .strip_prefix(media_dir)
         .map_err(|_| Error::string("Invalid media path"))?
         .to_string_lossy()
