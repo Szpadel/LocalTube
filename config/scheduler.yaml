@@ -1,5 +1,0 @@
-output: stdout
-jobs:
-  refresh_indexes:
-    run: refresh_indexes
-    schedule: run every 5 minutes

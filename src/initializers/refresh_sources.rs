@@ -6,6 +6,7 @@ use loco_rs::{
     task::Task,
     Result,
 };
+use tracing::error;
 
 use crate::tasks::refresh_indexes::RefreshIndexes;
 
@@ -18,7 +19,7 @@ impl Initializer for RefreshSources {
     }
 
     async fn before_run(&self, ctx: &AppContext) -> Result<()> {
-        (RefreshIndexes)
+        if let Err(e) = (RefreshIndexes)
             .run(
                 ctx,
                 &loco_rs::task::Vars::from_cli_args(vec![(
@@ -26,7 +27,24 @@ impl Initializer for RefreshSources {
                     "true".to_string(),
                 )]),
             )
-            .await?;
+            .await
+        {
+            error!("RefreshIndexes error: {:?}", e);
+        }
+
+        let ctx = ctx.clone();
+        tokio::spawn(async move {
+            loop {
+                tokio::time::sleep(tokio::time::Duration::from_secs(300)).await;
+
+                if let Err(e) = (RefreshIndexes)
+                    .run(&ctx, &loco_rs::task::Vars::default())
+                    .await
+                {
+                    error!("RefreshIndexes error: {:?}", e);
+                }
+            }
+        });
 
         Ok(())
     }
