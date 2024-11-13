@@ -15,7 +15,9 @@ impl super::_entities::sources::Model {
     /// Panics if the metadata field is None or contains invalid JSON
     #[must_use]
     pub fn get_metadata(&self) -> Option<SourceMetadata> {
-        self.metadata.clone().and_then(|m| serde_json::from_value(m).ok())
+        self.metadata
+            .clone()
+            .and_then(|m| serde_json::from_value(m).ok())
     }
 
     /// Returns the configured `SponsorBlock` categories for this source
