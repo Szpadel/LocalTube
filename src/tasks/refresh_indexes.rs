@@ -19,7 +19,7 @@ impl Task for RefreshIndexes {
                 .last_refreshed_at
                 .map_or(0, |last_refresh| (last_refresh.timestamp() % 1800) - 900);
 
-            let need_refresh = source.last_refreshed_at.map_or(true, |d| {
+            let need_refresh = source.last_refreshed_at.is_none_or(|d| {
                 (chrono::Utc::now() - d).num_seconds()
                     > i64::from(source.refresh_frequency * 3600) + jitter
             });

@@ -1,4 +1,4 @@
-use axum::async_trait;
+use async_trait::async_trait;
 use loco_rs::{
     app::{AppContext, Initializer},
     Error, Result,

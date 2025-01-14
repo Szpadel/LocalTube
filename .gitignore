@@ -17,6 +17,8 @@ target/
 *.pdb
 
 *.sqlite
+*.sqlite-shm
+*.sqlite-wal
 
 # Runtime downloaded libraries
 /libs

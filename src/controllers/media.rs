@@ -52,5 +52,5 @@ pub fn routes() -> Routes {
     Routes::new()
         .prefix("medias/")
         .add("/", get(list))
-        .add(":id", get(show))
+        .add("{id}", get(show))
 }
