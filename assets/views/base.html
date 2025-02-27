@@ -30,6 +30,25 @@
     {% endblock content %}
   </div>
 
+  <!-- Task Status Component -->
+  <div id="task-status" class="fixed bottom-4 right-4 bg-white rounded-lg shadow-lg p-4 max-h-60 overflow-y-auto w-80 z-50">
+    <div class="flex justify-between items-center mb-2">
+      <h3 class="font-semibold">Background Tasks</h3>
+      <button id="task-status-toggle" class="text-gray-500 hover:text-gray-700 focus:outline-none">
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+          <path fill-rule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clip-rule="evenodd" />
+        </svg>
+      </button>
+    </div>
+    <div id="task-status-content" class="divide-y divide-gray-200">
+      <div id="task-list" class="space-y-2">
+        <div class="py-2 task-item">
+          <p class="text-gray-600">System is idle</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
   {% block js %}{% endblock js %}
   <script>
     htmx.defineExtension('submitjson', {
@@ -56,6 +75,154 @@
             }
             return JSON.stringify(json);
         }
+    });
+
+    // WebSocket Status Indicator
+    document.addEventListener('DOMContentLoaded', function() {
+      const taskList = document.getElementById('task-list');
+      const taskStatusToggle = document.getElementById('task-status-toggle');
+      const taskStatusContent = document.getElementById('task-status-content');
+      let isCollapsed = false;
+
+      // Toggle task status visibility
+      taskStatusToggle.addEventListener('click', function() {
+        isCollapsed = !isCollapsed;
+        if (isCollapsed) {
+          taskStatusContent.classList.add('hidden');
+          taskStatusToggle.innerHTML = `
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+              <path fill-rule="evenodd" d="M14.707 12.707a1 1 0 01-1.414 0L10 9.414l-3.293 3.293a1 1 0 01-1.414-1.414l4-4a1 1 0 011.414 0l4 4a1 1 0 010 1.414z" clip-rule="evenodd" />
+            </svg>
+          `;
+        } else {
+          taskStatusContent.classList.remove('hidden');
+          taskStatusToggle.innerHTML = `
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+              <path fill-rule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clip-rule="evenodd" />
+            </svg>
+          `;
+        }
+      });
+
+      // Connect to WebSocket with retry logic
+      let socket;
+      let reconnectAttempts = 0;
+      const maxReconnectAttempts = 5;
+
+      function connectWebSocket() {
+        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const wsUrl = `${protocol}//${window.location.host}/ws/status`;
+        console.log(`Attempting to connect to WebSocket at ${wsUrl}`);
+
+        // Try the fallback first if we've had failed attempts
+        if (reconnectAttempts > 0) {
+          fetch('/ws-debug')
+            .then(response => {
+              if (response.ok) {
+                console.log('Debug endpoint is accessible');
+              }
+            })
+            .catch(err => {
+              console.error('Debug endpoint error:', err);
+            });
+        }
+
+        socket = new WebSocket(wsUrl);
+
+        socket.onopen = function() {
+          console.log('Connected to status WebSocket');
+          reconnectAttempts = 0; // Reset on successful connection
+
+          // Show a connected message in the task list
+          const taskItem = document.createElement('div');
+          taskItem.className = 'py-2 task-item text-green-600';
+          taskItem.innerHTML = `<p>WebSocket connected</p>`;
+          taskList.innerHTML = '';
+          taskList.appendChild(taskItem);
+
+          // Remove after 2 seconds
+          setTimeout(() => {
+            if (taskItem.parentNode === taskList) {
+              taskList.removeChild(taskItem);
+              updateTaskList([]);
+            }
+          }, 2000);
+        };
+
+        socket.onmessage = function(event) {
+          console.log('WebSocket message received:', event.data);
+          try {
+            const data = JSON.parse(event.data);
+            updateTaskList(data.tasks);
+          } catch (error) {
+            console.error('Error parsing WebSocket message:', error);
+          }
+        };
+
+        socket.onerror = function(error) {
+          console.error('WebSocket error:', error);
+          // Show error in UI
+          const errorItem = document.createElement('div');
+          errorItem.className = 'py-2 task-item text-red-600';
+          errorItem.innerHTML = `<p>WebSocket error - check console</p>`;
+          taskList.innerHTML = '';
+          taskList.appendChild(errorItem);
+        };
+
+        socket.onclose = function() {
+          console.log('Disconnected from WebSocket');
+          reconnectAttempts++;
+
+          if (reconnectAttempts <= maxReconnectAttempts) {
+            const delay = Math.min(1000 * reconnectAttempts, 5000);
+            console.log(`Attempting to reconnect in ${delay}ms (attempt ${reconnectAttempts}/${maxReconnectAttempts})`);
+
+            const reconnectItem = document.createElement('div');
+            reconnectItem.className = 'py-2 task-item text-orange-600';
+            reconnectItem.innerHTML = `<p>Reconnecting (${reconnectAttempts}/${maxReconnectAttempts})...</p>`;
+            taskList.innerHTML = '';
+            taskList.appendChild(reconnectItem);
+
+            setTimeout(connectWebSocket, delay);
+          } else {
+            const failedItem = document.createElement('div');
+            failedItem.className = 'py-2 task-item text-red-600';
+            failedItem.innerHTML = `<p>Failed to connect after ${maxReconnectAttempts} attempts</p>`;
+            taskList.innerHTML = '';
+            taskList.appendChild(failedItem);
+          }
+        };
+      }
+
+      // Start connection
+      connectWebSocket();
+
+      // Update the task list in the UI
+      function updateTaskList(tasks) {
+        taskList.innerHTML = '';
+
+        if (tasks.length === 0) {
+          const idleItem = document.createElement('div');
+          idleItem.className = 'py-2 task-item';
+          idleItem.innerHTML = `<p class="text-gray-600">System is idle</p>`;
+          taskList.appendChild(idleItem);
+          return;
+        }
+
+        tasks.forEach(task => {
+          const taskItem = document.createElement('div');
+          taskItem.className = 'py-2 task-item';
+          taskItem.innerHTML = `
+            <div class="flex items-center">
+              <div class="flex-1">
+                <p class="text-sm font-medium">${task.task_type === 'DownloadVideo' ? 'Downloading:' : 'Refreshing:'}</p>
+                <p class="text-sm text-gray-600">${task.title}</p>
+              </div>
+            </div>
+          `;
+          taskList.appendChild(taskItem);
+        });
+      }
     });
   </script>
 </body>

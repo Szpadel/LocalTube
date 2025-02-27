@@ -44,6 +44,12 @@ impl BackgroundWorker<FetchSourceInfoWorkerArgs> for FetchSourceInfoWorker {
                 .map_err(Error::msg)?;
             let source_metadata: SourceMetadata = metadata.into();
 
+            // Register the task with the TaskManager
+            let task_id = crate::ws::register_refresh_task(format!(
+                "Refreshing {}",
+                source_metadata.uploader
+            ));
+
             let source_update = SourceActiveModel {
                 id: Set(source.id),
                 metadata: Set(Some(
@@ -175,6 +181,10 @@ impl BackgroundWorker<FetchSourceInfoWorkerArgs> for FetchSourceInfoWorker {
             crate::models::sources::Sources::update(source_update)
                 .exec(&self.ctx.db)
                 .await?;
+
+            // Remove the task from the TaskManager
+            crate::ws::TaskManager::global().remove_task(&task_id);
+
             info!("{}: Finished source reindex", source_metadata.uploader);
         }
 

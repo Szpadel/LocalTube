@@ -51,6 +51,9 @@ impl BackgroundWorker<FetchMediaWorkerArgs> for FetchMediaWorker {
         }
         let source_metadata = source_metadata.unwrap();
 
+        // Register the task with the TaskManager
+        let task_id = crate::ws::register_download_task(metadata.title.clone());
+
         info!(
             "{}: Downloading {}",
             &source_metadata.source_provider, &metadata.title,
@@ -62,6 +65,9 @@ impl BackgroundWorker<FetchMediaWorkerArgs> for FetchMediaWorker {
             "{} Downloaded {} to {}",
             &source_metadata.source_provider, &metadata.title, file_path
         );
+
+        // Remove the task from the TaskManager
+        crate::ws::TaskManager::global().remove_task(&task_id);
 
         let media_update = crate::models::_entities::medias::ActiveModel {
             id: Set(media.id),

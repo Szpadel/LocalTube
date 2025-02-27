@@ -47,6 +47,7 @@ impl Hooks for App {
             Box::new(initializers::view_engine::ViewEngineInitializer),
             Box::new(initializers::download_deps::DownloadDeps),
             Box::new(initializers::refresh_sources::RefreshSources),
+            Box::new(initializers::ws_status::WebSocketStatusInitializer),
         ])
     }
 
