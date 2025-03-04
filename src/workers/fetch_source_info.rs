@@ -32,8 +32,8 @@ impl BackgroundWorker<FetchSourceInfoWorkerArgs> for FetchSourceInfoWorker {
         Self { ctx: ctx.clone() }
     }
     async fn perform(&self, args: FetchSourceInfoWorkerArgs) -> Result<()> {
-        // We'll use this variable to store task ID for error reporting
-        let mut task_id: Option<String> = None;
+        // Store the task directly
+        let mut task = None;
 
         // Try to execute the source info fetching operation
         let result = async {
@@ -44,21 +44,34 @@ impl BackgroundWorker<FetchSourceInfoWorkerArgs> for FetchSourceInfoWorker {
 
             if let Some(source) = source {
                 info!("Fetching source info for {}", source.url);
-                let metadata = download_last_video_metadata(&source.url)
-                    .await
-                    .map_err(Error::msg)?;
-                let source_metadata: SourceMetadata = metadata.into();
 
                 // Register the task with the TaskManager
-                task_id = Some(crate::ws::register_refresh_task(format!(
+                let task_title = format!(
                     "Refreshing {}",
-                    source_metadata.uploader
-                )));
+                    source
+                        .get_metadata()
+                        .map(|m| m.uploader.clone())
+                        .unwrap_or_else(|| source.url.clone())
+                );
+                let t = crate::ws::register_refresh_task(task_title);
+                task = Some(t);
+
+                if let Some(task) = &task {
+                    task.update_status("Fetching channel metadata...".to_string());
+                }
+
+                let metadata = download_last_video_metadata(&source.url)
+                    .await
+                    .map_err(|e| {
+                        Error::string(&format!("Failed to fetch channel metadata: {}", e))
+                    })?;
+                let source_metadata: SourceMetadata = metadata.into();
 
                 let source_update = SourceActiveModel {
                     id: Set(source.id),
                     metadata: Set(Some(
-                        serde_json::to_value(source_metadata.clone()).map_err(Error::msg)?,
+                        serde_json::to_value(source_metadata.clone())
+                            .map_err(|_| Error::string("Failed to serialize source metadata"))?,
                     )),
                     ..Default::default()
                 };
@@ -66,13 +79,28 @@ impl BackgroundWorker<FetchSourceInfoWorkerArgs> for FetchSourceInfoWorker {
                     .exec(&self.ctx.db)
                     .await?;
 
+                if let Some(task) = &task {
+                    task.update_status("Fetching video list...".to_string());
+                }
+
                 let fetch_before_timestamp = chrono::Utc::now()
                     .checked_sub_signed(chrono::Duration::days(i64::from(source.fetch_last_days)))
                     .unwrap()
                     .timestamp();
 
                 let mut media_stream = stream_media_list(&source.url).await;
+                let mut media_count = 0;
+
                 while let Some(metadata) = media_stream.recv().await {
+                    media_count += 1;
+
+                    if let Some(task) = &task {
+                        task.update_status(format!(
+                            "Processing video {} ({})",
+                            media_count, metadata.title
+                        ));
+                    }
+
                     let mut download_media_id = None;
                     info!(
                         "{}: Fetching media info for {}",
@@ -149,6 +177,10 @@ impl BackgroundWorker<FetchSourceInfoWorkerArgs> for FetchSourceInfoWorker {
                     }
                 }
 
+                if let Some(task) = &task {
+                    task.update_status("Cleaning up old videos...".to_string());
+                }
+
                 // select all media that were created after the fetch_before_timestamp
                 // this info is stored in metadata.timestamp, so we need to load all media for source in batches and check the timestamp
 
@@ -194,11 +226,9 @@ impl BackgroundWorker<FetchSourceInfoWorkerArgs> for FetchSourceInfoWorker {
                     .exec(&self.ctx.db)
                     .await?;
 
-                // Mark the task as successfully completed
-                if let Some(id) = &task_id {
-                    crate::ws::TaskManager::global().remove_task(id);
-                    task_id = None; // Clear ID so we don't process it again in error handling
-                }
+                // Task will be automatically completed when dropped
+                // We take it out to prevent marking as failed
+                task.take();
 
                 info!("{}: Finished source reindex", source_metadata.uploader);
             }
@@ -211,10 +241,16 @@ impl BackgroundWorker<FetchSourceInfoWorkerArgs> for FetchSourceInfoWorker {
         if let Err(e) = &result {
             error!("Source refresh failed: {}", e);
 
-            // Report the error if we have a task ID
-            if let Some(id) = &task_id {
-                crate::ws::TaskManager::global()
-                    .mark_task_failed(id, format!("Source refresh failed: {}", e));
+            // Report the error if we have a task
+            if let Some(t) = &task {
+                let error_msg = match e {
+                    Error::Message(msg) => msg.clone(),
+                    _ => format!(
+                        "Source refresh failed: {}",
+                        e.to_string().split('\n').next().unwrap_or("Unknown error")
+                    ),
+                };
+                t.mark_failed(error_msg);
             }
         }
 

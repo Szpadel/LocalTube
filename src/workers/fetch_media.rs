@@ -17,8 +17,8 @@ impl BackgroundWorker<FetchMediaWorkerArgs> for FetchMediaWorker {
         Self { ctx: ctx.clone() }
     }
     async fn perform(&self, args: FetchMediaWorkerArgs) -> Result<()> {
-        // We'll use this variable to store task ID for error reporting
-        let mut task_id: Option<String> = None;
+        // We'll store the task directly now, not just the ID
+        let mut task = None;
 
         // Try to execute the download operation
         let result = async {
@@ -56,8 +56,13 @@ impl BackgroundWorker<FetchMediaWorkerArgs> for FetchMediaWorker {
             }
             let source_metadata = source_metadata.unwrap();
 
-            // Register the task with the TaskManager
-            task_id = Some(crate::ws::register_download_task(metadata.title.clone()));
+            // Register the task with the TaskManager - now returning a Task
+            let t = crate::ws::register_download_task(metadata.title.clone());
+            task = Some(t);
+
+            if let Some(task) = &task {
+                task.update_status("Starting download...".to_string());
+            }
 
             info!(
                 "{}: Downloading {}",
@@ -67,7 +72,7 @@ impl BackgroundWorker<FetchMediaWorkerArgs> for FetchMediaWorker {
             // This is where errors are most likely to happen
             let file_path = crate::ytdlp::download_media(&metadata.original_url, &source)
                 .await
-                .map_err(Error::msg)?;
+                .map_err(|e| Error::string(&format!("Download failed: {}", e)))?;
 
             info!(
                 "{} Downloaded {} to {}",
@@ -83,24 +88,28 @@ impl BackgroundWorker<FetchMediaWorkerArgs> for FetchMediaWorker {
                 .exec(&self.ctx.db)
                 .await?;
 
-            // Mark the task as successfully completed
-            if let Some(id) = &task_id {
-                crate::ws::TaskManager::global().remove_task(id);
-                task_id = None; // Clear ID so we don't process it again in error handling
-            }
+            // Task will be automatically completed when it goes out of scope
+            // So we prevent it from being marked as failed in the error handler
+            task.take();
 
             Ok(())
         }
         .await;
 
-        // Handle errors if any - we only want to report the failure, not change the result
+        // Handle errors if any - only mark failed if we still have the task
         if let Err(e) = &result {
             error!("Download failed: {}", e);
 
-            // Report the error if we have a task ID
-            if let Some(id) = &task_id {
-                crate::ws::TaskManager::global()
-                    .mark_task_failed(id, format!("Download failed: {}", e));
+            // Report the error if we have a task
+            if let Some(t) = &task {
+                let error_msg = match e {
+                    Error::Message(msg) => msg.clone(),
+                    _ => format!(
+                        "Download failed: {}",
+                        e.to_string().split('\n').next().unwrap_or("Unknown error")
+                    ),
+                };
+                t.mark_failed(error_msg);
             }
         }
 

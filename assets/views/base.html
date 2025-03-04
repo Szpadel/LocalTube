@@ -297,13 +297,6 @@
             }`;
           titleEl.textContent = task.title; // Safe automatic escaping
 
-          // Add error message if task failed
-          if (task.failed && task.error_message) {
-            const errorEl = document.createElement('p');
-            errorEl.className = 'text-xs text-red-500 mt-1';
-            errorEl.textContent = task.error_message; // Safe automatic escaping
-            contentDiv.appendChild(errorEl);
-          }
 
           // Assemble the DOM structure
           headerDiv.appendChild(typeLabel);
@@ -317,6 +310,22 @@
 
           taskItem.appendChild(containerDiv);
           taskList.appendChild(taskItem);
+
+          // Add status message if available
+          if (task.status && !task.failed) {
+            const statusEl = document.createElement('p');
+            statusEl.className = 'text-xs text-gray-500 mt-1';
+            statusEl.textContent = task.status; // Safe automatic escaping
+            contentDiv.appendChild(statusEl);
+          }
+
+          // Add error message if task failed
+          if (task.failed && task.error_message) {
+            const errorEl = document.createElement('p');
+            errorEl.className = 'text-xs text-red-500 mt-1';
+            errorEl.textContent = task.error_message; // Safe automatic escaping
+            contentDiv.appendChild(errorEl);
+          }
         });
       }
     });

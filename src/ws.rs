@@ -38,6 +38,7 @@ pub struct TaskStatus {
     pub removed_at: Option<Instant>,
     pub failed: bool,
     pub error_message: Option<String>,
+    pub status: Option<String>, // New field for status updates
 }
 
 // Serializable version of TaskStatus for sending over WebSocket
@@ -49,6 +50,7 @@ pub struct SerializableTaskStatus {
     pub removed: bool,
     pub failed: bool,
     pub error_message: Option<String>,
+    pub status: Option<String>, // New field for status updates
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -60,6 +62,81 @@ pub struct TaskUpdate {
 pub struct TaskManager {
     pub tasks: Arc<Mutex<HashMap<TaskId, TaskStatus>>>,
     pub tx: broadcast::Sender<TaskUpdate>,
+}
+
+// Manual implementation of Debug for TaskManager
+impl std::fmt::Debug for TaskManager {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("TaskManager")
+            .field(
+                "tasks",
+                &format!(
+                    "Arc<Mutex<HashMap<TaskId, TaskStatus>>> with {} entries",
+                    self.tasks.lock().map(|t| t.len()).unwrap_or(0)
+                ),
+            )
+            .field("tx", &"broadcast::Sender<TaskUpdate>")
+            .finish()
+    }
+}
+
+// RAII Task handle - automatically completes the task when dropped
+#[derive(Debug)]
+pub struct Task {
+    id: TaskId,
+    manager: &'static TaskManager,
+    completed: bool, // Flag to avoid double-completion
+}
+
+impl Task {
+    fn new(id: TaskId, manager: &'static TaskManager) -> Self {
+        Self {
+            id,
+            manager,
+            completed: false,
+        }
+    }
+
+    pub fn id(&self) -> &str {
+        &self.id
+    }
+
+    // Update the task title
+    pub fn update_title(&self, title: String) {
+        self.manager.update_task_title(&self.id, title);
+    }
+
+    // Set a status message on the task
+    pub fn update_status(&self, status: String) {
+        self.manager.update_task_status(&self.id, status);
+    }
+
+    // Mark the task as failed
+    pub fn mark_failed(&self, error_message: String) {
+        self.manager.mark_task_failed(&self.id, error_message);
+    }
+
+    // Explicitly mark as complete
+    pub fn complete(mut self) {
+        if !self.completed {
+            self.completed = true;
+            self.manager.remove_task(&self.id);
+        }
+    }
+
+    // Prevent automatic completion on drop
+    pub fn forget(mut self) {
+        self.completed = true;
+    }
+}
+
+// Automatically complete the task when dropped
+impl Drop for Task {
+    fn drop(&mut self) {
+        if !self.completed {
+            self.manager.remove_task(&self.id);
+        }
+    }
 }
 
 impl Default for TaskManager {
@@ -77,14 +154,51 @@ impl TaskManager {
         }
     }
 
-    pub fn add_task(&self, task: TaskStatus) {
+    // Create a new task and return a Task handle
+    pub fn add_task(&self, task_type: TaskType, title: String) -> Task {
+        let id = uuid::Uuid::new_v4().to_string();
+        let task = TaskStatus {
+            id: id.clone(),
+            task_type,
+            title,
+            created_at: Instant::now(),
+            removed: false,
+            removed_at: None,
+            failed: false,
+            error_message: None,
+            status: None,
+        };
         {
             let mut tasks = self.tasks.lock().unwrap();
-            tasks.insert(task.id.clone(), task);
+            tasks.insert(id.clone(), task);
+        } // Lock is released here
+        self.broadcast_update();
+        Task::new(id, TaskManager::global())
+    }
+
+    // Update the task title
+    pub fn update_task_title(&self, id: &str, title: String) {
+        {
+            let mut tasks = self.tasks.lock().unwrap();
+            if let Some(task) = tasks.get_mut(id) {
+                task.title = title;
+            }
         } // Lock is released here
         self.broadcast_update();
     }
 
+    // Update the task status message
+    pub fn update_task_status(&self, id: &str, status: String) {
+        {
+            let mut tasks = self.tasks.lock().unwrap();
+            if let Some(task) = tasks.get_mut(id) {
+                task.status = Some(status);
+            }
+        } // Lock is released here
+        self.broadcast_update();
+    }
+
+    // Internal method called by Task when dropped
     pub fn remove_task(&self, id: &str) {
         {
             let mut tasks = self.tasks.lock().unwrap();
@@ -121,6 +235,7 @@ impl TaskManager {
                     removed: task.removed,
                     failed: task.failed,
                     error_message: task.error_message.clone(),
+                    status: task.status.clone(),
                 })
                 .collect::<Vec<SerializableTaskStatus>>()
         }; // Mutex lock is released here
@@ -207,6 +322,7 @@ pub async fn ws_handler(ws: WebSocketUpgrade) -> impl IntoResponse {
                         removed: task.removed,
                         failed: task.failed,
                         error_message: task.error_message.clone(),
+                        status: task.status.clone(),
                     })
                     .collect::<Vec<SerializableTaskStatus>>()
             };
@@ -254,37 +370,13 @@ pub async fn ws_handler(ws: WebSocketUpgrade) -> impl IntoResponse {
 }
 
 // Helper function to register a task for download
-pub fn register_download_task(title: String) -> TaskId {
-    let id = uuid::Uuid::new_v4().to_string();
-    let task = TaskStatus {
-        id: id.clone(),
-        task_type: TaskType::DownloadVideo,
-        title,
-        created_at: Instant::now(),
-        removed: false,
-        removed_at: None,
-        failed: false,
-        error_message: None,
-    };
-    TaskManager::global().add_task(task);
-    id
+pub fn register_download_task(title: String) -> Task {
+    TaskManager::global().add_task(TaskType::DownloadVideo, title)
 }
 
 // Helper function to register a task for index refresh
-pub fn register_refresh_task(title: String) -> TaskId {
-    let id = uuid::Uuid::new_v4().to_string();
-    let task = TaskStatus {
-        id: id.clone(),
-        task_type: TaskType::RefreshIndex,
-        title,
-        created_at: Instant::now(),
-        removed: false,
-        removed_at: None,
-        failed: false,
-        error_message: None,
-    };
-    TaskManager::global().add_task(task);
-    id
+pub fn register_refresh_task(title: String) -> Task {
+    TaskManager::global().add_task(TaskType::RefreshIndex, title)
 }
 
 // Start the background task that will clean up old tasks
