@@ -31,7 +31,7 @@
   </div>
 
   <!-- Task Status Component -->
-  <div id="task-status" class="fixed bottom-4 right-4 bg-white rounded-lg shadow-lg p-4 max-h-60 overflow-y-auto w-80 z-50">
+  <div id="task-status" class="fixed bottom-4 right-4 bg-white rounded-lg shadow-lg p-4 max-h-180 overflow-y-auto w-80 z-50">
     <div class="flex justify-between items-center mb-2">
       <h3 class="font-semibold">Background Tasks</h3>
       <button id="task-status-toggle" class="text-gray-500 hover:text-gray-700 focus:outline-none">
@@ -204,22 +204,118 @@
         if (tasks.length === 0) {
           const idleItem = document.createElement('div');
           idleItem.className = 'py-2 task-item';
-          idleItem.innerHTML = `<p class="text-gray-600">System is idle</p>`;
+
+          const idleText = document.createElement('p');
+          idleText.className = 'text-gray-600';
+          idleText.textContent = 'System is idle';
+
+          idleItem.appendChild(idleText);
           taskList.appendChild(idleItem);
           return;
         }
 
         tasks.forEach(task => {
           const taskItem = document.createElement('div');
-          taskItem.className = 'py-2 task-item';
-          taskItem.innerHTML = `
-            <div class="flex items-center">
-              <div class="flex-1">
-                <p class="text-sm font-medium">${task.task_type === 'DownloadVideo' ? 'Downloading:' : 'Refreshing:'}</p>
-                <p class="text-sm text-gray-600">${task.title}</p>
-              </div>
-            </div>
-          `;
+
+          // Set appropriate class based on task status
+          let statusClass = '';
+          let statusIcon = '';
+
+          if (task.failed) {
+            // Failed tasks
+            statusClass = 'border-l-4 border-red-500 pl-2 bg-red-50';
+            statusIcon = `
+              <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-red-500" viewBox="0 0 20 20" fill="currentColor">
+                <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clip-rule="evenodd" />
+              </svg>`;
+          } else if (task.removed) {
+            // Completed tasks (removed = completed)
+            statusClass = 'border-l-4 border-green-500 pl-2 bg-green-50';
+            statusIcon = `
+              <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-green-500" viewBox="0 0 20 20" fill="currentColor">
+                <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" />
+              </svg>`;
+          } else {
+            // In progress tasks
+            statusClass = 'border-l-4 border-blue-500 pl-2 bg-blue-50';
+            statusIcon = `
+              <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-blue-500" viewBox="0 0 20 20" fill="currentColor">
+                <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z" clip-rule="evenodd" />
+              </svg>`;
+          }
+
+          taskItem.className = `py-2 task-item ${statusClass}`;
+
+          // Get task type label
+          const taskTypeLabel = task.task_type === 'DownloadVideo' ? 'Downloading:' : 'Refreshing:';
+
+          // Add status label
+          let statusLabel = "";
+          if (task.failed) {
+            statusLabel = "Failed";
+          } else if (task.removed) {
+            statusLabel = "Completed";
+          } else {
+            statusLabel = "In progress";
+          }
+
+          // Create DOM elements instead of using innerHTML
+          const containerDiv = document.createElement('div');
+          containerDiv.className = 'flex items-center';
+
+          // Icon container
+          const iconDiv = document.createElement('div');
+          iconDiv.className = 'mr-2';
+          iconDiv.innerHTML = statusIcon; // This is trusted static content
+
+          // Content container
+          const contentDiv = document.createElement('div');
+          contentDiv.className = 'flex-1';
+
+          // Header with type and status
+          const headerDiv = document.createElement('div');
+          headerDiv.className = 'flex justify-between';
+
+          // Type label
+          const typeLabel = document.createElement('p');
+          typeLabel.className = 'text-sm font-medium';
+          typeLabel.textContent = taskTypeLabel;
+
+          // Status badge
+          const statusBadge = document.createElement('span');
+          statusBadge.className = `text-xs px-2 py-0.5 rounded-full ${task.failed ? 'bg-red-100 text-red-800' :
+              task.removed ? 'bg-green-100 text-green-800' :
+                'bg-blue-100 text-blue-800'
+            }`;
+          statusBadge.textContent = statusLabel;
+
+          // Title
+          const titleEl = document.createElement('p');
+          titleEl.className = `text-sm ${task.failed ? 'text-red-600' :
+              task.removed ? 'text-green-600' :
+                'text-blue-600'
+            }`;
+          titleEl.textContent = task.title; // Safe automatic escaping
+
+          // Add error message if task failed
+          if (task.failed && task.error_message) {
+            const errorEl = document.createElement('p');
+            errorEl.className = 'text-xs text-red-500 mt-1';
+            errorEl.textContent = task.error_message; // Safe automatic escaping
+            contentDiv.appendChild(errorEl);
+          }
+
+          // Assemble the DOM structure
+          headerDiv.appendChild(typeLabel);
+          headerDiv.appendChild(statusBadge);
+
+          contentDiv.appendChild(headerDiv);
+          contentDiv.appendChild(titleEl);
+
+          containerDiv.appendChild(iconDiv);
+          containerDiv.appendChild(contentDiv);
+
+          taskItem.appendChild(containerDiv);
           taskList.appendChild(taskItem);
         });
       }

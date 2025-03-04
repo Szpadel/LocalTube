@@ -4,7 +4,6 @@ use loco_rs::{
     app::{AppContext, Initializer},
     Result,
 };
-use tracing::info;
 
 use crate::ws::{start_cleanup_task, ws_handler, TaskManager};
 
@@ -23,8 +22,6 @@ impl Initializer for WebSocketStatusInitializer {
     }
 
     async fn after_routes(&self, router: AxumRouter, _ctx: &AppContext) -> Result<AxumRouter> {
-        info!("Setting up WebSocket routes");
-
         // Start the cleanup task now that the Tokio runtime is fully initialized
         start_cleanup_task(TaskManager::global().clone());
 

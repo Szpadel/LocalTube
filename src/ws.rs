@@ -34,6 +34,10 @@ pub struct TaskStatus {
     pub task_type: TaskType,
     pub title: String,
     pub created_at: Instant,
+    pub removed: bool,
+    pub removed_at: Option<Instant>,
+    pub failed: bool,
+    pub error_message: Option<String>,
 }
 
 // Serializable version of TaskStatus for sending over WebSocket
@@ -42,6 +46,9 @@ pub struct SerializableTaskStatus {
     pub id: TaskId,
     pub task_type: TaskType,
     pub title: String,
+    pub removed: bool,
+    pub failed: bool,
+    pub error_message: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -81,7 +88,22 @@ impl TaskManager {
     pub fn remove_task(&self, id: &str) {
         {
             let mut tasks = self.tasks.lock().unwrap();
-            tasks.remove(id);
+            if let Some(task) = tasks.get_mut(id) {
+                // Mark the task as removed
+                task.removed = true;
+                task.removed_at = Some(Instant::now());
+            }
+        } // Lock is released here
+        self.broadcast_update();
+    }
+
+    pub fn mark_task_failed(&self, id: &str, error_message: String) {
+        {
+            let mut tasks = self.tasks.lock().unwrap();
+            if let Some(task) = tasks.get_mut(id) {
+                task.failed = true;
+                task.error_message = Some(error_message);
+            }
         } // Lock is released here
         self.broadcast_update();
     }
@@ -96,6 +118,9 @@ impl TaskManager {
                     id: task.id.clone(),
                     task_type: task.task_type.clone(),
                     title: task.title.clone(),
+                    removed: task.removed,
+                    failed: task.failed,
+                    error_message: task.error_message.clone(),
                 })
                 .collect::<Vec<SerializableTaskStatus>>()
         }; // Mutex lock is released here
@@ -104,7 +129,8 @@ impl TaskManager {
         let _ = self.tx.send(TaskUpdate { tasks: task_list });
     }
 
-    // Clean up completed tasks that have been in the list for over 5 seconds
+    // Clean up tasks that have been marked as removed for over 5 seconds
+    // (or 30 seconds for failed tasks)
     pub fn cleanup_old_tasks(&self) {
         let now = Instant::now();
         let task_ids_to_remove = {
@@ -112,7 +138,22 @@ impl TaskManager {
             let tasks = self.tasks.lock().unwrap();
             tasks
                 .iter()
-                .filter(|(_, task)| now.duration_since(task.created_at) > Duration::from_secs(5))
+                .filter(|(_, task)| {
+                    if !task.removed || task.removed_at.is_none() {
+                        return false;
+                    }
+
+                    let removed_time = task.removed_at.unwrap();
+                    let timeout_duration = if task.failed {
+                        // Keep failed tasks for 30 seconds
+                        Duration::from_secs(30)
+                    } else {
+                        // Normal tasks for 5 seconds
+                        Duration::from_secs(5)
+                    };
+
+                    now.duration_since(removed_time) > timeout_duration
+                })
                 .map(|(id, _)| id.clone())
                 .collect::<Vec<String>>()
         }; // Lock is released here
@@ -163,6 +204,9 @@ pub async fn ws_handler(ws: WebSocketUpgrade) -> impl IntoResponse {
                         id: task.id.clone(),
                         task_type: task.task_type.clone(),
                         title: task.title.clone(),
+                        removed: task.removed,
+                        failed: task.failed,
+                        error_message: task.error_message.clone(),
                     })
                     .collect::<Vec<SerializableTaskStatus>>()
             };
@@ -185,7 +229,6 @@ pub async fn ws_handler(ws: WebSocketUpgrade) -> impl IntoResponse {
                 tokio::select! {
                     _ = interval.tick() => {
                         // Send a WebSocket ping to check connection instead of task data
-                        info!("Sending WebSocket ping");
                         if let Err(e) = sender.send(Message::Ping(vec![1, 2, 3, 4].into())).await {
                             info!("Ping failed: {:?}", e);
                             break;
@@ -218,6 +261,10 @@ pub fn register_download_task(title: String) -> TaskId {
         task_type: TaskType::DownloadVideo,
         title,
         created_at: Instant::now(),
+        removed: false,
+        removed_at: None,
+        failed: false,
+        error_message: None,
     };
     TaskManager::global().add_task(task);
     id
@@ -231,6 +278,10 @@ pub fn register_refresh_task(title: String) -> TaskId {
         task_type: TaskType::RefreshIndex,
         title,
         created_at: Instant::now(),
+        removed: false,
+        removed_at: None,
+        failed: false,
+        error_message: None,
     };
     TaskManager::global().add_task(task);
     id
