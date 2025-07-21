@@ -7,7 +7,7 @@ use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
 use std::{
     collections::HashMap,
-    sync::{Arc, Mutex},
+    sync::{Arc, Mutex, RwLock},
     time::{Duration, Instant},
 };
 use tokio::sync::broadcast;
@@ -22,7 +22,7 @@ static TASK_MANAGER: Lazy<TaskManager> = Lazy::new(|| {
 
 pub type TaskId = String;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
 pub enum TaskType {
     RefreshIndex,
     DownloadVideo,
@@ -38,7 +38,8 @@ pub struct TaskStatus {
     pub removed_at: Option<Instant>,
     pub failed: bool,
     pub error_message: Option<String>,
-    pub status: Option<String>, // New field for status updates
+    pub status: Option<String>,
+    pub completed: bool,
 }
 
 // Serializable version of TaskStatus for sending over WebSocket
@@ -50,7 +51,7 @@ pub struct SerializableTaskStatus {
     pub removed: bool,
     pub failed: bool,
     pub error_message: Option<String>,
-    pub status: Option<String>, // New field for status updates
+    pub status: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -58,10 +59,32 @@ pub struct TaskUpdate {
     pub tasks: Vec<SerializableTaskStatus>,
 }
 
+#[derive(Default)]
+struct TaskMetricData {
+    success: u64,
+    failure: u64,
+    consecutive_failures: u64,
+    last_success: Option<Instant>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct TaskMetrics {
+    pub success_count: u64,
+    pub failure_count: u64,
+    pub consecutive_failures: u64,
+    pub last_success_seconds_ago: Option<u64>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct AllMetrics {
+    pub tasks: HashMap<TaskType, TaskMetrics>,
+}
+
 #[derive(Clone)]
 pub struct TaskManager {
     pub tasks: Arc<Mutex<HashMap<TaskId, TaskStatus>>>,
     pub tx: broadcast::Sender<TaskUpdate>,
+    metrics: Arc<RwLock<HashMap<TaskType, TaskMetricData>>>,
 }
 
 // Manual implementation of Debug for TaskManager
@@ -120,6 +143,13 @@ impl Task {
     pub fn complete(mut self) {
         if !self.completed {
             self.completed = true;
+            // Mark as completed in the task status for metrics
+            {
+                let mut tasks = self.manager.tasks.lock().unwrap();
+                if let Some(task) = tasks.get_mut(&self.id) {
+                    task.completed = true;
+                }
+            }
             self.manager.remove_task(&self.id);
         }
     }
@@ -148,9 +178,14 @@ impl Default for TaskManager {
 impl TaskManager {
     pub fn new() -> Self {
         let (tx, _) = broadcast::channel(100);
+        let mut metrics = HashMap::new();
+        for task_type in &[TaskType::RefreshIndex, TaskType::DownloadVideo] {
+            metrics.insert(task_type.clone(), TaskMetricData::default());
+        }
         Self {
             tasks: Arc::new(Mutex::new(HashMap::new())),
             tx,
+            metrics: Arc::new(RwLock::new(metrics)),
         }
     }
 
@@ -167,6 +202,7 @@ impl TaskManager {
             failed: false,
             error_message: None,
             status: None,
+            completed: false,
         };
         {
             let mut tasks = self.tasks.lock().unwrap();
@@ -198,16 +234,37 @@ impl TaskManager {
         self.broadcast_update();
     }
 
-    // Internal method called by Task when dropped
+    // Internal method called by Task when dropped or completed
     pub fn remove_task(&self, id: &str) {
-        {
+        let task_type = {
             let mut tasks = self.tasks.lock().unwrap();
             if let Some(task) = tasks.get_mut(id) {
-                // Mark the task as removed
+                if task.removed {
+                    return;
+                }
                 task.removed = true;
                 task.removed_at = Some(Instant::now());
+                Some(task.task_type.clone())
+            } else {
+                None
             }
-        } // Lock is released here
+        };
+
+        if let Some(task_type) = task_type {
+            let mut metrics = self.metrics.write().unwrap();
+            if let Some(data) = metrics.get_mut(&task_type) {
+                let tasks = self.tasks.lock().unwrap();
+                let task = tasks.get(id).unwrap();
+                if task.failed {
+                    data.failure += 1;
+                    data.consecutive_failures += 1;
+                } else if task.completed {
+                    data.success += 1;
+                    data.consecutive_failures = 0;
+                    data.last_success = Some(Instant::now());
+                }
+            }
+        }
         self.broadcast_update();
     }
 
@@ -290,6 +347,29 @@ impl TaskManager {
     // Get the global task manager instance
     pub fn global() -> &'static TaskManager {
         &TASK_MANAGER
+    }
+
+    pub fn get_metrics(&self) -> AllMetrics {
+        let metrics = self.metrics.read().unwrap();
+        let now = Instant::now();
+        let tasks = metrics
+            .iter()
+            .map(|(task_type, data)| {
+                let last_success_seconds_ago =
+                    data.last_success.map(|t| now.duration_since(t).as_secs());
+                (
+                    task_type.clone(),
+                    TaskMetrics {
+                        success_count: data.success,
+                        failure_count: data.failure,
+                        consecutive_failures: data.consecutive_failures,
+                        last_success_seconds_ago,
+                    },
+                )
+            })
+            .collect();
+
+        AllMetrics { tasks }
     }
 }
 

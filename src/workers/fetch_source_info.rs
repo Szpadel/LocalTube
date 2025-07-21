@@ -252,6 +252,11 @@ impl BackgroundWorker<FetchSourceInfoWorkerArgs> for FetchSourceInfoWorker {
                 };
                 t.mark_failed(error_msg);
             }
+        } else {
+            // On success, mark the task as complete for metrics
+            if let Some(t) = task.take() {
+                t.complete();
+            }
         }
 
         // Return the original result to propagate errors properly

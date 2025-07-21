@@ -88,10 +88,6 @@ impl BackgroundWorker<FetchMediaWorkerArgs> for FetchMediaWorker {
                 .exec(&self.ctx.db)
                 .await?;
 
-            // Task will be automatically completed when it goes out of scope
-            // So we prevent it from being marked as failed in the error handler
-            task.take();
-
             Ok(())
         }
         .await;
@@ -110,6 +106,11 @@ impl BackgroundWorker<FetchMediaWorkerArgs> for FetchMediaWorker {
                     ),
                 };
                 t.mark_failed(error_msg);
+            }
+        } else {
+            // On success, mark the task as complete for metrics
+            if let Some(t) = task.take() {
+                t.complete();
             }
         }
 
