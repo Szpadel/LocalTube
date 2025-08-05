@@ -1,13 +1,15 @@
 use std::path::Path;
 
 use async_trait::async_trait;
+use axum::response::Redirect;
 use loco_rs::{
     app::{AppContext, Hooks, Initializer},
     bgworker::{BackgroundWorker, Queue},
     boot::{create_app, BootResult, StartMode},
-    controller::AppRoutes,
+    controller::{AppRoutes, Routes},
     db::{self, truncate_table},
     environment::Environment,
+    prelude::*,
     task::Tasks,
     Result,
 };
@@ -16,6 +18,10 @@ use migration::Migrator;
 use crate::{
     controllers, initializers, models::_entities::users, tasks, workers::downloader::DownloadWorker,
 };
+
+async fn redirect_to_sources() -> Redirect {
+    Redirect::permanent("/sources")
+}
 
 pub struct App;
 #[async_trait]
@@ -53,6 +59,7 @@ impl Hooks for App {
 
     fn routes(_ctx: &AppContext) -> AppRoutes {
         AppRoutes::with_default_routes()
+            .add_route(Routes::new().add("/", get(redirect_to_sources)))
             .add_route(controllers::media::routes())
             .add_route(controllers::source::routes())
             .add_route(controllers::auth::routes())
