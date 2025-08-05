@@ -63,7 +63,7 @@ impl BackgroundWorker<FetchSourceInfoWorkerArgs> for FetchSourceInfoWorker {
                 let metadata = download_last_video_metadata(&source.url)
                     .await
                     .map_err(|e| {
-                        Error::string(&format!("Failed to fetch channel metadata: {}", e))
+                        Error::string(&format!("Failed to fetch channel metadata: {e}"))
                     })?;
                 let source_metadata: SourceMetadata = metadata.into();
 

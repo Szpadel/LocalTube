@@ -72,7 +72,7 @@ impl BackgroundWorker<FetchMediaWorkerArgs> for FetchMediaWorker {
             // This is where errors are most likely to happen
             let file_path = crate::ytdlp::download_media(&metadata.original_url, &source)
                 .await
-                .map_err(|e| Error::string(&format!("Download failed: {}", e)))?;
+                .map_err(|e| Error::string(&format!("Download failed: {e}")))?;
 
             info!(
                 "{} Downloaded {} to {}",

@@ -7,6 +7,7 @@ use crate::models::_entities::{medias, sources};
 /// # Errors
 ///
 /// When there is an issue with rendering the view.
+#[allow(clippy::result_large_err)]
 pub fn list(
     v: &impl ViewRenderer,
     items: &[(medias::Model, Option<sources::Model>)],
@@ -19,6 +20,7 @@ pub fn list(
 /// # Errors
 ///
 /// When there is an issue with rendering the view.
+#[allow(clippy::result_large_err)]
 pub fn show(
     v: &impl ViewRenderer,
     item: &medias::Model,

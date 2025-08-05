@@ -10,7 +10,7 @@ use crate::ws::TaskManager;
 /// GET /metrics/ - Returns current task metrics in JSON format
 #[debug_handler]
 pub async fn list(State(_ctx): State<AppContext>) -> Result<Response> {
-    format::json(&TaskManager::global().get_metrics())
+    format::json(TaskManager::global().get_metrics())
 }
 
 pub fn routes() -> Routes {

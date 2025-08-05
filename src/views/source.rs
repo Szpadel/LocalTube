@@ -7,6 +7,7 @@ use crate::models::_entities::sources;
 /// # Errors
 ///
 /// When there is an issue with rendering the view.
+#[allow(clippy::result_large_err)]
 pub fn list(v: &impl ViewRenderer, items: &Vec<sources::Model>) -> Result<Response> {
     format::render().view(v, "source/list.html", data!({"items": items}))
 }
@@ -16,6 +17,7 @@ pub fn list(v: &impl ViewRenderer, items: &Vec<sources::Model>) -> Result<Respon
 /// # Errors
 ///
 /// When there is an issue with rendering the view.
+#[allow(clippy::result_large_err)]
 pub fn show(v: &impl ViewRenderer, item: &sources::Model) -> Result<Response> {
     format::render().view(v, "source/show.html", data!({"item": item}))
 }
@@ -25,6 +27,7 @@ pub fn show(v: &impl ViewRenderer, item: &sources::Model) -> Result<Response> {
 /// # Errors
 ///
 /// When there is an issue with rendering the view.
+#[allow(clippy::result_large_err)]
 pub fn create(v: &impl ViewRenderer) -> Result<Response> {
     format::render().view(v, "source/create.html", data!({}))
 }
@@ -34,6 +37,7 @@ pub fn create(v: &impl ViewRenderer) -> Result<Response> {
 /// # Errors
 ///
 /// When there is an issue with rendering the view.
+#[allow(clippy::result_large_err)]
 pub fn edit(v: &impl ViewRenderer, item: &sources::Model) -> Result<Response> {
     format::render().view(v, "source/edit.html", data!({"item": item}))
 }
