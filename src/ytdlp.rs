@@ -1,3 +1,4 @@
+use crate::ytdlp_debug;
 use loco_rs::{Error, Result};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
@@ -115,6 +116,13 @@ pub async fn download_last_video_metadata(url: &str) -> Result<VideoMetadata> {
         .output()
         .await?;
 
+    ytdlp_debug::log_ytdlp_json(
+        "download_last_video_metadata",
+        &output.stdout,
+        Some(url),
+        None,
+    )
+    .await;
     let video_metadata: VideoMetadata = serde_json::from_slice(&output.stdout)?;
     Ok(video_metadata)
 }
@@ -143,6 +151,7 @@ pub async fn stream_media_list(url: &str) -> tokio::sync::mpsc::Receiver<VideoMe
             if line.is_empty() {
                 continue;
             }
+            ytdlp_debug::log_ytdlp_line("stream_media_list", &line, None, None).await;
             let video_metadata: VideoMetadata = serde_json::from_str(&line).unwrap();
             if tx.send(video_metadata).await.is_err() || tx.is_closed() {
                 // Receiver was dropped, terminate the command
@@ -208,6 +217,13 @@ pub async fn download_media(
         .output()
         .await?;
 
+    ytdlp_debug::log_ytdlp_json(
+        "download_media",
+        &output.stdout,
+        Some(url),
+        Some(&format!("source_id={}", source.id)),
+    )
+    .await;
     let video_metadata: VideoMetadata = serde_json::from_slice(&output.stdout)?;
 
     // yt-dlp do not report remuxed file path, we need to check if it exists
