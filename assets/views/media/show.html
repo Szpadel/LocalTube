@@ -40,6 +40,13 @@
     {% endif %}
     <div class="mt-6">
         <a href="/medias/{{ item.id }}/edit" class="text-red-500 hover:underline mr-4">Edit</a>
+        <form method="post" action="/medias/{{ item.id }}/redownload" class="inline mr-4">
+            <button type="submit"
+                    class="text-red-500 hover:underline cursor-pointer bg-transparent border-none p-0 font-inherit"
+                    onclick="return confirm('Are you sure you want to redownload this media? This will delete the current file and download it again.')">
+                Redownload
+            </button>
+        </form>
         <a href="/medias" class="text-red-500 hover:underline">Back to Media Library</a>
     </div>
 </div>

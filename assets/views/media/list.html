@@ -33,6 +33,13 @@ Media Library
         <div class="flex space-x-4">
             <a href="/medias/{{ item.0.id }}/edit" class="text-red-500 hover:underline">Edit</a>
             <a href="/medias/{{ item.0.id }}" class="text-red-500 hover:underline">View</a>
+            <form method="post" action="/medias/{{ item.0.id }}/redownload" class="inline">
+                <button type="submit"
+                        class="text-red-500 hover:underline cursor-pointer bg-transparent border-none p-0 font-inherit"
+                        onclick="return confirm('Are you sure you want to redownload this media? This will delete the current file and download it again.')">
+                    Redownload
+                </button>
+            </form>
         </div>
     </div>
     {% endfor %}

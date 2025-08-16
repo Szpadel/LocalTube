@@ -1,5 +1,5 @@
 use crate::ytdlp::VideoMetadata;
-use sea_orm::entity::prelude::*;
+use loco_rs::prelude::*;
 use serde::{Deserialize, Serialize};
 
 use super::_entities::medias::{ActiveModel, Entity};
@@ -18,6 +18,35 @@ impl super::_entities::medias::Model {
     #[must_use]
     pub fn get_metadata(&self) -> Option<MediaMetadata> {
         serde_json::from_value(self.metadata.clone().unwrap()).ok()
+    }
+
+    /// Removes media files from the filesystem
+    ///
+    /// This removes both the main media file and the corresponding .info.json file.
+    /// Files that don't exist are silently ignored (not an error).
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if file removal fails due to permission issues or other filesystem errors.
+    #[allow(clippy::result_large_err)]
+    pub fn remove_media_files(&self) -> Result<()> {
+        if let Some(path) = &self.media_path {
+            let base_path = crate::ytdlp::media_directory().join(path);
+            let info_path = base_path.with_extension("info.json");
+
+            for file_path in [&info_path, &base_path] {
+                if file_path.exists() {
+                    std::fs::remove_file(file_path).map_err(|e| {
+                        Error::string(&format!(
+                            "Failed to remove file {}: {}",
+                            file_path.display(),
+                            e
+                        ))
+                    })?;
+                }
+            }
+        }
+        Ok(())
     }
 }
 

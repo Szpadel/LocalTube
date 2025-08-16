@@ -197,21 +197,7 @@ impl BackgroundWorker<FetchSourceInfoWorkerArgs> for FetchSourceInfoWorker {
                                 "{}: Removing old media {}",
                                 &source_metadata.uploader, &metadata.title
                             );
-                            if let Some(path) = &media.media_path {
-                                let base_path = ytdlp::media_directory().join(path);
-                                let info_path = base_path.with_extension("info.json");
-                                for path in [&info_path, &base_path] {
-                                    if path.exists() {
-                                        std::fs::remove_file(path).map_err(|e| {
-                                            Error::string(&format!(
-                                                "Failed to remove file {}: {}",
-                                                path.display(),
-                                                e
-                                            ))
-                                        })?;
-                                    }
-                                }
-                            }
+                            media.remove_media_files()?;
                             media.delete(&self.ctx.db).await?;
                         }
                     }

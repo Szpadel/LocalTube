@@ -1,13 +1,14 @@
 #![allow(clippy::missing_errors_doc)]
 #![allow(clippy::unnecessary_struct_initialization)]
 #![allow(clippy::unused_async)]
-use axum::debug_handler;
+use axum::{debug_handler, response::Redirect};
 use loco_rs::prelude::*;
-use sea_orm::{sea_query::Order, EntityTrait, QueryOrder};
+use sea_orm::{sea_query::Order, EntityTrait, QueryOrder, Set};
 
 use crate::{
-    models::_entities::medias::{Column, Entity, Model},
+    models::_entities::medias::{ActiveModel, Column, Entity, Model},
     views,
+    workers::fetch_media::{FetchMediaWorker, FetchMediaWorkerArgs},
 };
 
 async fn load_item(
@@ -48,9 +49,32 @@ pub async fn show(
     views::media::show(&v, &item, source.as_ref())
 }
 
+#[debug_handler]
+pub async fn redownload(Path(id): Path<i32>, State(ctx): State<AppContext>) -> Result<Redirect> {
+    let (item, _) = load_item(&ctx, id).await?;
+
+    // Remove existing media files from filesystem
+    item.remove_media_files()?;
+
+    // Update database to clear media_path
+    let media_update = ActiveModel {
+        id: Set(item.id),
+        media_path: Set(None),
+        ..Default::default()
+    };
+    Entity::update(media_update).exec(&ctx.db).await?;
+
+    // Queue new download job
+    FetchMediaWorker::perform_later(&ctx, FetchMediaWorkerArgs { media_id: item.id }).await?;
+
+    // Redirect back to media list (303 See Other forces GET method)
+    Ok(Redirect::to("/medias"))
+}
+
 pub fn routes() -> Routes {
     Routes::new()
         .prefix("medias/")
         .add("/", get(list))
         .add("{id}", get(show))
+        .add("{id}/redownload", post(redownload))
 }
