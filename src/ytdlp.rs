@@ -110,6 +110,8 @@ pub async fn download_last_video_metadata(url: &str) -> Result<VideoMetadata> {
     let _s = ytdtp_concurrency().acquire().await.unwrap();
     let output = Command::new(yt_dlp_path())
         .arg("--dump-json")
+        .arg("-t")
+        .arg("sleep")
         .arg("--max-downloads=1")
         .arg("--simulate")
         .arg(url)
@@ -137,6 +139,8 @@ pub async fn stream_media_list(url: &str) -> tokio::sync::mpsc::Receiver<VideoMe
             .process_group(0)
             .arg("--dump-json")
             .arg("--simulate")
+            .arg("-t")
+            .arg("sleep")
             .arg(url)
             .stdin(std::process::Stdio::null())
             .stdout(std::process::Stdio::piped())
@@ -196,6 +200,8 @@ pub async fn download_media(
     let sponsorblock = source.get_sponsorblock_categories().serialize();
     let output = Command::new(yt_dlp_path())
         .arg("--dump-json")
+        .arg("-t")
+        .arg("sleep")
         .arg("--restrict-filenames")
         .arg("--write-info-json")
         .arg(format!(
