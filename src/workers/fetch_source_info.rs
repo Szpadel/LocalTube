@@ -1,5 +1,5 @@
 use loco_rs::prelude::*;
-use sea_orm::Condition;
+use sea_orm::{Condition, Set};
 use serde::{Deserialize, Serialize};
 use tracing::{error, info, warn};
 
@@ -24,6 +24,25 @@ pub struct FetchSourceInfoWorker {
 #[derive(Deserialize, Debug, Serialize)]
 pub struct FetchSourceInfoWorkerArgs {
     pub source_id: i32,
+}
+
+impl FetchSourceInfoWorker {
+    /// Schedules a source refresh job while updating the last_scheduled_refresh timestamp
+    pub async fn schedule_refresh(ctx: &AppContext, source_id: i32) -> Result<()> {
+        // Update the last_scheduled_refresh timestamp before scheduling the job
+        let source_update = SourceActiveModel {
+            id: Set(source_id),
+            last_scheduled_refresh: Set(Some(chrono::Utc::now())),
+            ..Default::default()
+        };
+        crate::models::sources::Sources::update(source_update)
+            .exec(&ctx.db)
+            .await?;
+
+        // Now schedule the actual job
+        Self::perform_later(ctx, FetchSourceInfoWorkerArgs { source_id }).await?;
+        Ok(())
+    }
 }
 
 #[async_trait]
