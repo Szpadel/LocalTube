@@ -24,7 +24,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: ${{ env.RUST_TOOLCHAIN }}
-          components: rustfmt
+          components: rustfmt, clippy
       - name: Run cargo fmt
         uses: actions-rs/cargo@v1
         with:
