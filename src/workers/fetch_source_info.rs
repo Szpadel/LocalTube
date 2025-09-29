@@ -51,8 +51,8 @@ impl BackgroundWorker<FetchSourceInfoWorkerArgs> for FetchSourceInfoWorker {
         Self { ctx: ctx.clone() }
     }
     async fn perform(&self, args: FetchSourceInfoWorkerArgs) -> Result<()> {
-        // Store the task directly
-        let mut task = None;
+        // Store ActiveTask (not queued)
+        let mut task: Option<crate::ws::ActiveTask> = None;
 
         // Try to execute the source info fetching operation
         let result = async {
@@ -72,12 +72,16 @@ impl BackgroundWorker<FetchSourceInfoWorkerArgs> for FetchSourceInfoWorker {
                         .map(|m| m.uploader.clone())
                         .unwrap_or_else(|| source.url.clone())
                 );
-                let t = crate::ws::register_refresh_task(task_title);
-                task = Some(t);
 
-                if let Some(task) = &task {
-                    task.update_status("Fetching channel metadata...".to_string());
-                }
+                // Register task as Queued
+                let queued = crate::ws::register_refresh_task(task_title);
+
+                // Acquire semaphore and transition to Active
+                // This is where the task actually waits if semaphore is full!
+                let active = queued.start(crate::ytdlp::ytdtp_concurrency()).await;
+                active.update_status("Fetching channel metadata...".to_string());
+
+                task = Some(active);
 
                 let metadata = download_last_video_metadata(&source.url)
                     .await
@@ -231,10 +235,6 @@ impl BackgroundWorker<FetchSourceInfoWorkerArgs> for FetchSourceInfoWorker {
                     .exec(&self.ctx.db)
                     .await?;
 
-                // Task will be automatically completed when dropped
-                // We take it out to prevent marking as failed
-                task.take();
-
                 info!("{}: Finished source reindex", source_metadata.uploader);
             }
 
@@ -247,7 +247,7 @@ impl BackgroundWorker<FetchSourceInfoWorkerArgs> for FetchSourceInfoWorker {
             error!("Source refresh failed: {}", e);
 
             // Report the error if we have a task
-            if let Some(t) = &task {
+            if let Some(t) = task.take() {
                 let error_msg = match e {
                     Error::Message(msg) => msg.clone(),
                     _ => format!(

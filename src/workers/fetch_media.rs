@@ -17,8 +17,8 @@ impl BackgroundWorker<FetchMediaWorkerArgs> for FetchMediaWorker {
         Self { ctx: ctx.clone() }
     }
     async fn perform(&self, args: FetchMediaWorkerArgs) -> Result<()> {
-        // We'll store the task directly now, not just the ID
-        let mut task = None;
+        // Store ActiveTask (not queued)
+        let mut task: Option<crate::ws::ActiveTask> = None;
 
         // Try to execute the download operation
         let result = async {
@@ -56,13 +56,15 @@ impl BackgroundWorker<FetchMediaWorkerArgs> for FetchMediaWorker {
             }
             let source_metadata = source_metadata.unwrap();
 
-            // Register the task with the TaskManager - now returning a Task
-            let t = crate::ws::register_download_task(metadata.title.clone());
-            task = Some(t);
+            // Register task as Queued
+            let queued = crate::ws::register_download_task(metadata.title.clone());
 
-            if let Some(task) = &task {
-                task.update_status("Starting download...".to_string());
-            }
+            // Acquire semaphore and transition to Active
+            // This is where the task actually waits if semaphore is full!
+            let active = queued.start(crate::ytdlp::ytdtp_concurrency()).await;
+            active.update_status("Downloading...".to_string());
+
+            task = Some(active);
 
             info!(
                 "{}: Downloading {}",
@@ -97,7 +99,7 @@ impl BackgroundWorker<FetchMediaWorkerArgs> for FetchMediaWorker {
             error!("Download failed: {}", e);
 
             // Report the error if we have a task
-            if let Some(t) = &task {
+            if let Some(t) = task.take() {
                 let error_msg = match e {
                     Error::Message(msg) => msg.clone(),
                     _ => format!(

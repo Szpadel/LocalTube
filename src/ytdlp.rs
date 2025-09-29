@@ -2,7 +2,7 @@ use crate::ytdlp_debug;
 use loco_rs::{Error, Result};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
-use std::sync::OnceLock;
+use std::sync::{Arc, OnceLock};
 use tokio::sync::Semaphore;
 use tokio::{io::AsyncBufReadExt, process::Command};
 use tokio_process_terminate::TerminateExt;
@@ -10,9 +10,9 @@ use tracing::{info, warn};
 use yt_dlp::fetcher::deps::Libraries;
 
 const LIBS_DIR: &str = "libs";
-static CONCURRENCY_SEMAPHORE: OnceLock<Semaphore> = OnceLock::new();
+static CONCURRENCY_SEMAPHORE: OnceLock<Arc<Semaphore>> = OnceLock::new();
 
-fn ytdtp_concurrency() -> &'static Semaphore {
+pub fn ytdtp_concurrency() -> &'static Arc<Semaphore> {
     const ENV_CONCURRENCY: &str = "LOCALTUBE_YTDLP_CONCURRENCY";
     CONCURRENCY_SEMAPHORE.get_or_init(|| {
         let concurrency = std::env::var(ENV_CONCURRENCY)
@@ -39,7 +39,7 @@ fn ytdtp_concurrency() -> &'static Semaphore {
 
         info!("yt-dlp concurrency: {}", limited_concurrency);
 
-        Semaphore::new(limited_concurrency)
+        Arc::new(Semaphore::new(limited_concurrency))
     })
 }
 
@@ -99,15 +99,15 @@ pub struct VideoMetadata {
 
 /// Downloads metadata for the last video from given URL
 ///
-/// # Panics
-///
-/// Panics if unable to acquire concurrency semaphore
-///
 /// # Errors
 ///
 /// Returns error if download fails or response parsing fails
+///
+/// # Note
+///
+/// This function does not acquire the concurrency semaphore. The caller
+/// must ensure proper concurrency control (typically via `ActiveTask`).
 pub async fn download_last_video_metadata(url: &str) -> Result<VideoMetadata> {
-    let _s = ytdtp_concurrency().acquire().await.unwrap();
     let output = Command::new(yt_dlp_path())
         .arg("--dump-json")
         .arg("-t")
@@ -129,12 +129,16 @@ pub async fn download_last_video_metadata(url: &str) -> Result<VideoMetadata> {
     Ok(video_metadata)
 }
 
+/// Streams media list from a given URL
+///
+/// # Note
+///
+/// This function does not acquire the concurrency semaphore. The caller
+/// must ensure proper concurrency control (typically via `ActiveTask`).
 pub async fn stream_media_list(url: &str) -> tokio::sync::mpsc::Receiver<VideoMetadata> {
     let (tx, rx) = tokio::sync::mpsc::channel(8);
-    let s = ytdtp_concurrency().acquire().await.unwrap();
     let url = url.to_string();
     tokio::spawn(async move {
-        let _s = s;
         let mut cmd = Command::new(yt_dlp_path())
             .process_group(0)
             .arg("--dump-json")
@@ -169,18 +173,18 @@ pub async fn stream_media_list(url: &str) -> tokio::sync::mpsc::Receiver<VideoMe
 
 /// Downloads media from given URL
 ///
-/// # Panics
-///
-/// Panics if unable to acquire concurrency semaphore
-///
 /// # Errors
 ///
 /// Returns error if download fails, source metadata is missing or invalid paths are encountered
+///
+/// # Note
+///
+/// This function does not acquire the concurrency semaphore. The caller
+/// must ensure proper concurrency control (typically via `ActiveTask`).
 pub async fn download_media(
     url: &str,
     source: &crate::models::_entities::sources::Model,
 ) -> Result<String> {
-    let _s = ytdtp_concurrency().acquire().await.unwrap();
     let media_dir = media_directory();
     let source_name = source
         .get_metadata()

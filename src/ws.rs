@@ -28,18 +28,23 @@ pub enum TaskType {
     DownloadVideo,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum TaskState {
+    Queued,
+    InProgress,
+    Completed,
+    Failed(String),
+}
+
 #[derive(Debug, Clone)]
 pub struct TaskStatus {
     pub id: TaskId,
     pub task_type: TaskType,
     pub title: String,
     pub created_at: Instant,
-    pub removed: bool,
-    pub removed_at: Option<Instant>,
-    pub failed: bool,
-    pub error_message: Option<String>,
+    pub state: TaskState,
+    pub completed_at: Option<Instant>,
     pub status: Option<String>,
-    pub completed: bool,
 }
 
 // Serializable version of TaskStatus for sending over WebSocket
@@ -48,9 +53,7 @@ pub struct SerializableTaskStatus {
     pub id: TaskId,
     pub task_type: TaskType,
     pub title: String,
-    pub removed: bool,
-    pub failed: bool,
-    pub error_message: Option<String>,
+    pub state: TaskState,
     pub status: Option<String>,
 }
 
@@ -103,6 +106,19 @@ impl std::fmt::Debug for TaskManager {
     }
 }
 
+/// A task that is queued, waiting for semaphore permit
+#[derive(Debug)]
+pub struct QueuedTask {
+    inner: Task,
+}
+
+/// A task that is actively running (holds semaphore permit)
+#[derive(Debug)]
+pub struct ActiveTask {
+    inner: Task,
+    _permit: tokio::sync::OwnedSemaphorePermit,
+}
+
 // RAII Task handle - automatically completes the task when dropped
 #[derive(Debug)]
 pub struct Task {
@@ -134,6 +150,11 @@ impl Task {
         self.manager.update_task_status(&self.id, status);
     }
 
+    // Mark the task as started (transition from Queued to InProgress)
+    pub fn mark_started(&self) {
+        self.manager.mark_task_started(&self.id);
+    }
+
     // Mark the task as failed
     pub fn mark_failed(&self, error_message: String) {
         self.manager.mark_task_failed(&self.id, error_message);
@@ -147,7 +168,8 @@ impl Task {
             {
                 let mut tasks = self.manager.tasks.lock().unwrap();
                 if let Some(task) = tasks.get_mut(&self.id) {
-                    task.completed = true;
+                    task.state = TaskState::Completed;
+                    task.completed_at = Some(Instant::now());
                 }
             }
             self.manager.remove_task(&self.id);
@@ -166,6 +188,54 @@ impl Drop for Task {
         if !self.completed {
             self.manager.remove_task(&self.id);
         }
+    }
+}
+
+impl QueuedTask {
+    pub fn id(&self) -> &str {
+        self.inner.id()
+    }
+
+    pub fn update_title(&self, title: String) {
+        self.inner.update_title(title);
+    }
+
+    /// Transition to active state by acquiring semaphore permit.
+    /// This is where the task actually waits if semaphore is full.
+    ///
+    /// # Arguments
+    /// * `sem` - The semaphore to acquire a permit from. This allows different
+    ///   task types to use different concurrency limits.
+    pub async fn start(self, sem: &'static std::sync::Arc<tokio::sync::Semaphore>) -> ActiveTask {
+        let permit = sem.clone().acquire_owned().await.unwrap();
+
+        // Automatically mark as started now that we have the permit
+        self.inner.manager.mark_task_started(&self.inner.id);
+
+        ActiveTask {
+            inner: self.inner,
+            _permit: permit,
+        }
+    }
+}
+
+impl ActiveTask {
+    pub fn id(&self) -> &str {
+        self.inner.id()
+    }
+
+    pub fn update_status(&self, status: String) {
+        self.inner.update_status(status);
+    }
+
+    pub fn complete(self) {
+        self.inner.complete();
+        // _permit automatically released on drop
+    }
+
+    pub fn mark_failed(self, error_message: String) {
+        self.inner.mark_failed(error_message);
+        // _permit automatically released on drop
     }
 }
 
@@ -189,27 +259,26 @@ impl TaskManager {
         }
     }
 
-    // Create a new task and return a Task handle
-    pub fn add_task(&self, task_type: TaskType, title: String) -> Task {
+    // Create a new task and return a QueuedTask handle
+    pub fn add_task(&'static self, task_type: TaskType, title: String) -> QueuedTask {
         let id = uuid::Uuid::new_v4().to_string();
         let task = TaskStatus {
             id: id.clone(),
             task_type,
             title,
             created_at: Instant::now(),
-            removed: false,
-            removed_at: None,
-            failed: false,
-            error_message: None,
+            state: TaskState::Queued,
+            completed_at: None,
             status: None,
-            completed: false,
         };
         {
             let mut tasks = self.tasks.lock().unwrap();
             tasks.insert(id.clone(), task);
         } // Lock is released here
         self.broadcast_update();
-        Task::new(id, TaskManager::global())
+        QueuedTask {
+            inner: Task::new(id, self),
+        }
     }
 
     // Update the task title
@@ -234,37 +303,54 @@ impl TaskManager {
         self.broadcast_update();
     }
 
-    // Internal method called by Task when dropped or completed
-    pub fn remove_task(&self, id: &str) {
-        let task_type = {
+    // Mark task as started (transition from Queued to InProgress)
+    pub fn mark_task_started(&self, id: &str) {
+        {
             let mut tasks = self.tasks.lock().unwrap();
             if let Some(task) = tasks.get_mut(id) {
-                if task.removed {
-                    return;
+                task.state = TaskState::InProgress;
+            }
+        } // Lock is released here
+        self.broadcast_update();
+    }
+
+    // Internal method called by Task when dropped or completed
+    pub fn remove_task(&self, id: &str) {
+        let (task_type, final_state) = {
+            let mut tasks = self.tasks.lock().unwrap();
+            if let Some(task) = tasks.get_mut(id) {
+                // Always set completed_at if not already set
+                if task.completed_at.is_none() {
+                    task.completed_at = Some(Instant::now());
                 }
-                task.removed = true;
-                task.removed_at = Some(Instant::now());
-                Some(task.task_type.clone())
+                Some((task.task_type.clone(), task.state.clone()))
             } else {
                 None
             }
-        };
+        }
+        .map(|(tt, fs)| (Some(tt), Some(fs)))
+        .unwrap_or((None, None));
 
-        if let Some(task_type) = task_type {
+        // Update metrics based on final state
+        if let (Some(task_type), Some(state)) = (&task_type, &final_state) {
             let mut metrics = self.metrics.write().unwrap();
-            if let Some(data) = metrics.get_mut(&task_type) {
-                let tasks = self.tasks.lock().unwrap();
-                let task = tasks.get(id).unwrap();
-                if task.failed {
-                    data.failure += 1;
-                    data.consecutive_failures += 1;
-                } else if task.completed {
-                    data.success += 1;
-                    data.consecutive_failures = 0;
-                    data.last_success = Some(Instant::now());
+            if let Some(data) = metrics.get_mut(task_type) {
+                match state {
+                    TaskState::Failed(_) => {
+                        data.failure += 1;
+                        data.consecutive_failures += 1;
+                    }
+                    TaskState::Completed => {
+                        data.success += 1;
+                        data.consecutive_failures = 0;
+                        data.last_success = Some(Instant::now());
+                    }
+                    _ => {}
                 }
             }
         }
+
+        // Always broadcast the final state to all clients
         self.broadcast_update();
     }
 
@@ -272,8 +358,8 @@ impl TaskManager {
         {
             let mut tasks = self.tasks.lock().unwrap();
             if let Some(task) = tasks.get_mut(id) {
-                task.failed = true;
-                task.error_message = Some(error_message);
+                task.state = TaskState::Failed(error_message);
+                task.completed_at = Some(Instant::now());
             }
         } // Lock is released here
         self.broadcast_update();
@@ -289,9 +375,7 @@ impl TaskManager {
                     id: task.id.clone(),
                     task_type: task.task_type.clone(),
                     title: task.title.clone(),
-                    removed: task.removed,
-                    failed: task.failed,
-                    error_message: task.error_message.clone(),
+                    state: task.state.clone(),
                     status: task.status.clone(),
                 })
                 .collect::<Vec<SerializableTaskStatus>>()
@@ -301,7 +385,7 @@ impl TaskManager {
         let _ = self.tx.send(TaskUpdate { tasks: task_list });
     }
 
-    // Clean up tasks that have been marked as removed for over 5 seconds
+    // Clean up tasks that have been marked as completed/failed for over 5 seconds
     // (or 30 seconds for failed tasks)
     pub fn cleanup_old_tasks(&self) {
         let now = Instant::now();
@@ -311,20 +395,21 @@ impl TaskManager {
             tasks
                 .iter()
                 .filter(|(_, task)| {
-                    if !task.removed || task.removed_at.is_none() {
-                        return false;
+                    // Only cleanup completed or failed tasks
+                    match &task.state {
+                        TaskState::Completed | TaskState::Failed(_) => {
+                            if let Some(completed_time) = task.completed_at {
+                                let timeout_duration = match task.state {
+                                    TaskState::Failed(_) => Duration::from_secs(30),
+                                    _ => Duration::from_secs(5),
+                                };
+                                now.duration_since(completed_time) > timeout_duration
+                            } else {
+                                false
+                            }
+                        }
+                        _ => false,
                     }
-
-                    let removed_time = task.removed_at.unwrap();
-                    let timeout_duration = if task.failed {
-                        // Keep failed tasks for 30 seconds
-                        Duration::from_secs(30)
-                    } else {
-                        // Normal tasks for 5 seconds
-                        Duration::from_secs(5)
-                    };
-
-                    now.duration_since(removed_time) > timeout_duration
                 })
                 .map(|(id, _)| id.clone())
                 .collect::<Vec<String>>()
@@ -399,9 +484,7 @@ pub async fn ws_handler(ws: WebSocketUpgrade) -> impl IntoResponse {
                         id: task.id.clone(),
                         task_type: task.task_type.clone(),
                         title: task.title.clone(),
-                        removed: task.removed,
-                        failed: task.failed,
-                        error_message: task.error_message.clone(),
+                        state: task.state.clone(),
                         status: task.status.clone(),
                     })
                     .collect::<Vec<SerializableTaskStatus>>()
@@ -450,12 +533,12 @@ pub async fn ws_handler(ws: WebSocketUpgrade) -> impl IntoResponse {
 }
 
 // Helper function to register a task for download
-pub fn register_download_task(title: String) -> Task {
+pub fn register_download_task(title: String) -> QueuedTask {
     TaskManager::global().add_task(TaskType::DownloadVideo, title)
 }
 
 // Helper function to register a task for index refresh
-pub fn register_refresh_task(title: String) -> Task {
+pub fn register_refresh_task(title: String) -> QueuedTask {
     TaskManager::global().add_task(TaskType::RefreshIndex, title)
 }
 
