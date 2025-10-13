@@ -1,16 +1,19 @@
-use localtube::ws::*;
+use localtube::job_tracking::{
+    manager::TaskManager,
+    task::{TaskState, TaskType},
+};
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::Semaphore;
 
 // Helper to create a static task manager for tests
-fn test_manager() -> &'static TaskManager {
-    Box::leak(Box::new(TaskManager::new()))
+fn test_manager() -> TaskManager {
+    TaskManager::new()
 }
 
 // Helper to create a test semaphore with 2 permits
-fn test_semaphore() -> &'static Arc<Semaphore> {
-    Box::leak(Box::new(Arc::new(Semaphore::new(2))))
+fn test_semaphore() -> Arc<Semaphore> {
+    Arc::new(Semaphore::new(2))
 }
 
 #[tokio::test]
@@ -30,7 +33,7 @@ async fn test_queued_to_active_transition() {
     drop(tasks);
 
     // Transition to active by acquiring permit
-    let active = queued.start(sem).await;
+    let active = queued.start(sem.clone()).await;
 
     // Should now be InProgress
     let tasks = manager.tasks.lock().unwrap();
@@ -56,7 +59,8 @@ async fn test_tasks_queue_when_semaphore_full() {
     let id = queued.id().to_string();
 
     // Try to start it in background (will block waiting for semaphore)
-    let handle = tokio::spawn(async move { queued.start(sem).await });
+    let sem_for_task = sem.clone();
+    let handle = tokio::spawn(async move { queued.start(sem_for_task).await });
 
     // Give it time to hit the semaphore wait
     tokio::time::sleep(Duration::from_millis(50)).await;
@@ -91,7 +95,7 @@ async fn test_active_task_complete() {
     let sem = test_semaphore();
     let queued = manager.add_task(TaskType::DownloadVideo, "Complete Task".into());
     let id = queued.id().to_string();
-    let active = queued.start(sem).await;
+    let active = queued.start(sem.clone()).await;
 
     // Complete the task
     active.complete();
@@ -112,7 +116,7 @@ async fn test_active_task_failed() {
     let sem = test_semaphore();
     let queued = manager.add_task(TaskType::DownloadVideo, "Failed Task".into());
     let id = queued.id().to_string();
-    let active = queued.start(sem).await;
+    let active = queued.start(sem.clone()).await;
 
     // Mark as failed
     active.mark_failed("Test error message".to_string());
@@ -136,8 +140,8 @@ async fn test_permit_released_on_drop() {
     // Acquire both permits via tasks
     let q1 = manager.add_task(TaskType::DownloadVideo, "Task 1".into());
     let q2 = manager.add_task(TaskType::DownloadVideo, "Task 2".into());
-    let a1 = q1.start(sem).await;
-    let a2 = q2.start(sem).await;
+    let a1 = q1.start(sem.clone()).await;
+    let a2 = q2.start(sem.clone()).await;
 
     // Semaphore should be full
     assert_eq!(sem.available_permits(), 0, "Expected 0 available permits");
@@ -176,8 +180,8 @@ async fn test_concurrent_task_limits() {
     let q1 = manager.add_task(TaskType::DownloadVideo, "Concurrent 1".into());
     let q2 = manager.add_task(TaskType::DownloadVideo, "Concurrent 2".into());
 
-    let a1 = q1.start(sem).await;
-    let _a2 = q2.start(sem).await;
+    let a1 = q1.start(sem.clone()).await;
+    let _a2 = q2.start(sem.clone()).await;
 
     // Both should be InProgress
     let tasks = manager.tasks.lock().unwrap();
@@ -192,7 +196,8 @@ async fn test_concurrent_task_limits() {
     let q3 = manager.add_task(TaskType::DownloadVideo, "Concurrent 3".into());
     let id3 = q3.id().to_string();
 
-    let handle = tokio::spawn(async move { q3.start(sem).await });
+    let sem_for_task = sem.clone();
+    let handle = tokio::spawn(async move { q3.start(sem_for_task).await });
 
     tokio::time::sleep(Duration::from_millis(50)).await;
 
@@ -232,7 +237,7 @@ async fn test_cleanup_timing() {
     // Create and complete a task
     let queued = manager.add_task(TaskType::DownloadVideo, "Cleanup Test".into());
     let id = queued.id().to_string();
-    let active = queued.start(sem).await;
+    let active = queued.start(sem.clone()).await;
     active.complete();
 
     // Task should exist immediately after completion
@@ -272,7 +277,7 @@ async fn test_failed_task_cleanup_timing() {
     // Create and fail a task
     let queued = manager.add_task(TaskType::DownloadVideo, "Failed Cleanup Test".into());
     let id = queued.id().to_string();
-    let active = queued.start(sem).await;
+    let active = queued.start(sem.clone()).await;
     active.mark_failed("Test failure".to_string());
 
     // Should exist after 25 seconds (cleanup is at 30s for failed)
@@ -296,4 +301,26 @@ async fn test_failed_task_cleanup_timing() {
             "Failed task should be cleaned up after 35s"
         );
     }
+}
+
+#[tokio::test]
+async fn test_cleanup_dropped_in_progress_task() {
+    let manager = test_manager();
+    let sem = test_semaphore();
+
+    let queued = manager.add_task(TaskType::DownloadVideo, "Dropped InProgress".into());
+    let id = queued.id().to_string();
+    let active = queued.start(sem.clone()).await;
+
+    // Simulate cancellation before completion.
+    drop(active);
+
+    tokio::time::sleep(Duration::from_secs(6)).await;
+    manager.cleanup_old_tasks();
+
+    let tasks = manager.tasks.lock().unwrap();
+    assert!(
+        !tasks.contains_key(&id),
+        "Dropped in-progress tasks should be reclaimed"
+    );
 }

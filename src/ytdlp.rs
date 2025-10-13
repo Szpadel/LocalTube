@@ -131,6 +131,10 @@ pub async fn download_last_video_metadata(url: &str) -> Result<VideoMetadata> {
 
 /// Streams media list from a given URL
 ///
+/// # Panics
+///
+/// Panics if spawning the `yt-dlp` process or capturing its output fails.
+///
 /// # Note
 ///
 /// This function does not acquire the concurrency semaphore. The caller

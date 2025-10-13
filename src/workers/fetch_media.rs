@@ -2,6 +2,8 @@ use loco_rs::prelude::*;
 use serde::{Deserialize, Serialize};
 use tracing::{error, info};
 
+use crate::job_tracking::{manager::register_download_task, task::ActiveTask};
+
 pub struct FetchMediaWorker {
     pub ctx: AppContext,
 }
@@ -18,7 +20,7 @@ impl BackgroundWorker<FetchMediaWorkerArgs> for FetchMediaWorker {
     }
     async fn perform(&self, args: FetchMediaWorkerArgs) -> Result<()> {
         // Store ActiveTask (not queued)
-        let mut task: Option<crate::ws::ActiveTask> = None;
+        let mut task: Option<ActiveTask> = None;
 
         // Try to execute the download operation
         let result = async {
@@ -57,11 +59,13 @@ impl BackgroundWorker<FetchMediaWorkerArgs> for FetchMediaWorker {
             let source_metadata = source_metadata.unwrap();
 
             // Register task as Queued
-            let queued = crate::ws::register_download_task(metadata.title.clone());
+            let queued = register_download_task(metadata.title.clone());
 
             // Acquire semaphore and transition to Active
             // This is where the task actually waits if semaphore is full!
-            let active = queued.start(crate::ytdlp::ytdtp_concurrency()).await;
+            let active = queued
+                .start(crate::ytdlp::ytdtp_concurrency().clone())
+                .await;
             active.update_status("Downloading...".to_string());
 
             task = Some(active);

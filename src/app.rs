@@ -54,6 +54,7 @@ impl Hooks for App {
             Box::new(initializers::download_deps::DownloadDeps),
             Box::new(initializers::refresh_sources::RefreshSources),
             Box::new(initializers::ws_status::WebSocketStatusInitializer),
+            Box::new(initializers::gluetun::GluetunInitializer),
         ])
     }
 
@@ -64,6 +65,7 @@ impl Hooks for App {
             .add_route(controllers::source::routes())
             .add_route(controllers::auth::routes())
             .add_route(controllers::metrics::routes())
+            .add_route(controllers::status::routes())
     }
 
     async fn connect_workers(ctx: &AppContext, queue: &Queue) -> Result<()> {

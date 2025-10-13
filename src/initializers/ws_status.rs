@@ -5,7 +5,8 @@ use loco_rs::{
     Result,
 };
 
-use crate::ws::{start_cleanup_task, ws_handler, TaskManager};
+use crate::job_tracking::manager::{start_cleanup_task, TaskManager};
+use crate::ws::ws_handler;
 
 async fn health_check() -> impl IntoResponse {
     (StatusCode::OK, "Status API is working")

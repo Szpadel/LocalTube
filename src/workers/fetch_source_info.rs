@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 use tracing::{error, info, warn};
 
 use crate::{
+    job_tracking::{manager::register_refresh_task, task::ActiveTask},
     models::medias::MediaMetadata,
     workers::fetch_media::{FetchMediaWorker, FetchMediaWorkerArgs},
     ytdlp::{self, download_last_video_metadata},
@@ -27,7 +28,11 @@ pub struct FetchSourceInfoWorkerArgs {
 }
 
 impl FetchSourceInfoWorker {
-    /// Schedules a source refresh job while updating the last_scheduled_refresh timestamp
+    /// Schedules a source refresh job while updating the `last_scheduled_refresh` timestamp.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if updating the source record or enqueueing the job fails.
     pub async fn schedule_refresh(ctx: &AppContext, source_id: i32) -> Result<()> {
         // Update the last_scheduled_refresh timestamp before scheduling the job
         let source_update = SourceActiveModel {
@@ -50,9 +55,10 @@ impl BackgroundWorker<FetchSourceInfoWorkerArgs> for FetchSourceInfoWorker {
     fn build(ctx: &AppContext) -> Self {
         Self { ctx: ctx.clone() }
     }
+    #[allow(clippy::too_many_lines)]
     async fn perform(&self, args: FetchSourceInfoWorkerArgs) -> Result<()> {
         // Store ActiveTask (not queued)
-        let mut task: Option<crate::ws::ActiveTask> = None;
+        let mut task: Option<ActiveTask> = None;
 
         // Try to execute the source info fetching operation
         let result = async {
@@ -69,16 +75,17 @@ impl BackgroundWorker<FetchSourceInfoWorkerArgs> for FetchSourceInfoWorker {
                     "Refreshing {}",
                     source
                         .get_metadata()
-                        .map(|m| m.uploader.clone())
-                        .unwrap_or_else(|| source.url.clone())
+                        .map_or_else(|| source.url.clone(), |m| m.uploader.clone())
                 );
 
                 // Register task as Queued
-                let queued = crate::ws::register_refresh_task(task_title);
+                let queued = register_refresh_task(task_title);
 
                 // Acquire semaphore and transition to Active
                 // This is where the task actually waits if semaphore is full!
-                let active = queued.start(crate::ytdlp::ytdtp_concurrency()).await;
+                let active = queued
+                    .start(crate::ytdlp::ytdtp_concurrency().clone())
+                    .await;
                 active.update_status("Fetching channel metadata...".to_string());
 
                 task = Some(active);

@@ -36,7 +36,6 @@ futures-util = "0.3"
 include_dir = "0.7"
 tracing-subscriber = { version = "0.3.17", features = ["env-filter", "json"] }
 uuid = { version = "1.6.0", features = ["v4"] }
-once_cell = "1.19.0"
 
 # view engine i18n
 fluent-templates = { version = "0.8.0", features = ["tera"] }
@@ -46,6 +45,8 @@ unic-langid = "0.9.4"
 # app
 yt-dlp = { version = "1.2.3", features = ["tracing"] }
 tokio-process-terminate = "0.3.2"
+reqwest = { version = "0.12", features = ["json", "rustls-tls"] }
+thiserror = "1"
 
 [[bin]]
 name = "localtube-cli"

@@ -5,7 +5,7 @@
 use axum::debug_handler;
 use loco_rs::prelude::*;
 
-use crate::ws::TaskManager;
+use crate::job_tracking::manager::TaskManager;
 
 /// GET /metrics/ - Returns current task metrics in JSON format
 #[debug_handler]
