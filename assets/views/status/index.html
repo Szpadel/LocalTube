@@ -26,7 +26,7 @@
 
   <div class="bg-white shadow rounded-lg p-6">
     <h2 class="text-xl font-semibold text-gray-800 mb-4">Download Pipeline</h2>
-    {% if download_metrics is defined and download_metrics is not none %}
+    {% if download_metrics is defined and download_metrics != null %}
       <dl class="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div class="border border-gray-100 rounded-lg p-4">
           <dt class="text-sm font-medium text-gray-500">Successful downloads</dt>
@@ -45,7 +45,7 @@
         <div class="border border-gray-100 rounded-lg p-4">
           <dt class="text-sm font-medium text-gray-500">Last successful download</dt>
           <dd class="text-lg font-semibold text-gray-800">
-            {% if download_metrics.last_success_seconds_ago is defined and download_metrics.last_success_seconds_ago is not none %}
+            {% if download_metrics.last_success_seconds_ago is defined and download_metrics.last_success_seconds_ago != null %}
               {{ (download_metrics.last_success_seconds_ago / 60) | round(method="ceil") }} minutes ago
             {% else %}
               Not recorded yet
@@ -55,7 +55,7 @@
         <div class="border border-gray-100 rounded-lg p-4">
           <dt class="text-sm font-medium text-gray-500">Last failure</dt>
           <dd class="text-lg font-semibold text-gray-800">
-            {% if download_metrics.last_failure_seconds_ago is defined and download_metrics.last_failure_seconds_ago is not none %}
+            {% if download_metrics.last_failure_seconds_ago is defined and download_metrics.last_failure_seconds_ago != null %}
               {{ (download_metrics.last_failure_seconds_ago / 60) | round(method="ceil") }} minutes ago
             {% else %}
               Not recorded yet
@@ -69,7 +69,7 @@
         <div class="border border-gray-100 rounded-lg p-4">
           <dt class="text-sm font-medium text-gray-500">Last VPN restart</dt>
           <dd class="text-lg font-semibold text-gray-800">
-            {% if download_metrics.last_restart_seconds_ago is defined and download_metrics.last_restart_seconds_ago is not none %}
+            {% if download_metrics.last_restart_seconds_ago is defined and download_metrics.last_restart_seconds_ago != null %}
               {{ (download_metrics.last_restart_seconds_ago / 60) | round(method="ceil") }} minutes ago
             {% elif gluetun_enabled %}
               Not triggered yet
@@ -130,14 +130,14 @@
                 {{ entry.metrics.consecutive_failures }}
               </td>
               <td class="px-4 py-2 text-sm text-gray-700">
-                {% if entry.metrics.last_success_seconds_ago is defined and entry.metrics.last_success_seconds_ago is not none %}
+                {% if entry.metrics.last_success_seconds_ago is defined and entry.metrics.last_success_seconds_ago != null %}
                   {{ (entry.metrics.last_success_seconds_ago / 60) | round(method="ceil") }}
                 {% else %}
                   —
                 {% endif %}
               </td>
               <td class="px-4 py-2 text-sm text-gray-700">
-                {% if entry.metrics.last_failure_seconds_ago is defined and entry.metrics.last_failure_seconds_ago is not none %}
+                {% if entry.metrics.last_failure_seconds_ago is defined and entry.metrics.last_failure_seconds_ago != null %}
                   {{ (entry.metrics.last_failure_seconds_ago / 60) | round(method="ceil") }}
                 {% else %}
                   —
