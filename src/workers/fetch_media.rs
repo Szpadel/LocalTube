@@ -1,14 +1,19 @@
+use std::time::Duration;
+
 use loco_rs::prelude::*;
 use serde::{Deserialize, Serialize};
 use tracing::{error, info};
 
 use crate::job_tracking::{manager::register_download_task, task::ActiveTask};
+use crate::services::retry::RetryScheduler;
+
+const RETRY_DELAY: Duration = Duration::from_secs(5 * 60);
 
 pub struct FetchMediaWorker {
     pub ctx: AppContext,
 }
 
-#[derive(Deserialize, Debug, Serialize)]
+#[derive(Clone, Deserialize, Debug, Serialize)]
 pub struct FetchMediaWorkerArgs {
     pub media_id: i32,
 }
@@ -113,6 +118,8 @@ impl BackgroundWorker<FetchMediaWorkerArgs> for FetchMediaWorker {
                 };
                 t.mark_failed(error_msg);
             }
+
+            schedule_media_retry(self.ctx.clone(), args.media_id);
         } else {
             // On success, mark the task as complete for metrics
             if let Some(t) = task.take() {
@@ -123,4 +130,29 @@ impl BackgroundWorker<FetchMediaWorkerArgs> for FetchMediaWorker {
         // Return the original result to propagate errors properly
         result
     }
+}
+
+fn schedule_media_retry(ctx: AppContext, media_id: i32) {
+    info!(media_id, "Rescheduling media download in 5 minutes");
+
+    let check_ctx = ctx.clone();
+    let action_ctx = ctx;
+
+    RetryScheduler::spawn_detached(
+        RETRY_DELAY,
+        move || {
+            let ctx = check_ctx.clone();
+            async move {
+                let media = crate::models::medias::Medias::find_by_id(media_id)
+                    .one(&ctx.db)
+                    .await
+                    .map_err(Box::from)?;
+                Ok(media.is_some_and(|m| m.media_path.is_none()))
+            }
+        },
+        move || {
+            let ctx = action_ctx.clone();
+            async move { FetchMediaWorker::perform_later(&ctx, FetchMediaWorkerArgs { media_id }).await }
+        },
+    );
 }
