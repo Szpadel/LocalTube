@@ -6,7 +6,7 @@ use std::{
 
 use crate::job_tracking::task::TaskType;
 
-pub const MAX_CONSECUTIVE_FAILURES_BEFORE_RESTART: u64 = 10;
+pub const MAX_CONSECUTIVE_FAILURES_BEFORE_RESTART: u64 = 3;
 pub const MIN_SUCCESS_AGE_BEFORE_RESTART: Duration = Duration::from_secs(30 * 60);
 
 #[derive(Default)]
