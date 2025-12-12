@@ -135,3 +135,83 @@ async fn records_restart_failure() {
     .await;
     supervisor::deactivate(&manager);
 }
+
+#[tokio::test]
+async fn triggers_restart_after_threshold_on_refresh_failures() {
+    let _guard = TEST_SERIAL_GUARD.lock().await;
+    let manager = TaskManager::new();
+    let notify = Arc::new(Notify::new());
+    let controller: Arc<dyn GluetunController> = Arc::new(MockController::success(notify.clone()));
+    supervisor::activate(&controller, &manager);
+
+    for idx in 0..MAX_CONSECUTIVE_FAILURES_BEFORE_RESTART {
+        let queued = manager.add_task(TaskType::RefreshIndex, format!("fail-refresh-{idx}"));
+        let id = queued.id().to_string();
+        manager.mark_task_failed(&id, "simulated refresh failure".to_string());
+        manager.remove_task(&id);
+    }
+
+    timeout(Duration::from_secs(1), notify.notified())
+        .await
+        .expect("restart not triggered in time");
+
+    spin_until(Duration::from_secs(1), || {
+        let snapshot = manager.get_metrics();
+        if let Some(refresh) = snapshot.tasks.get(&TaskType::RefreshIndex) {
+            !refresh.restart_in_progress
+                && refresh.restart_count == 1
+                && refresh.consecutive_failures == 0
+                && refresh.last_restart_error.is_none()
+        } else {
+            false
+        }
+    })
+    .await;
+    supervisor::deactivate(&manager);
+}
+
+#[tokio::test]
+async fn refresh_restart_does_not_reset_download_failure_streak() {
+    let _guard = TEST_SERIAL_GUARD.lock().await;
+    let manager = TaskManager::new();
+    let notify = Arc::new(Notify::new());
+    let controller: Arc<dyn GluetunController> = Arc::new(MockController::success(notify.clone()));
+    supervisor::activate(&controller, &manager);
+
+    let queued = manager.add_task(TaskType::DownloadVideo, "download-fail".to_string());
+    let id = queued.id().to_string();
+    manager.mark_task_failed(&id, "simulated download failure".to_string());
+    manager.remove_task(&id);
+
+    for idx in 0..MAX_CONSECUTIVE_FAILURES_BEFORE_RESTART {
+        let queued = manager.add_task(TaskType::RefreshIndex, format!("fail-refresh-{idx}"));
+        let id = queued.id().to_string();
+        manager.mark_task_failed(&id, "simulated refresh failure".to_string());
+        manager.remove_task(&id);
+    }
+
+    timeout(Duration::from_secs(1), notify.notified())
+        .await
+        .expect("restart not triggered in time");
+
+    spin_until(Duration::from_secs(1), || {
+        let snapshot = manager.get_metrics();
+
+        let Some(download) = snapshot.tasks.get(&TaskType::DownloadVideo) else {
+            return false;
+        };
+
+        let Some(refresh) = snapshot.tasks.get(&TaskType::RefreshIndex) else {
+            return false;
+        };
+
+        !refresh.restart_in_progress
+            && refresh.restart_count == 1
+            && refresh.consecutive_failures == 0
+            && refresh.last_restart_error.is_none()
+            && download.restart_count == 0
+            && download.consecutive_failures == 1
+    })
+    .await;
+    supervisor::deactivate(&manager);
+}

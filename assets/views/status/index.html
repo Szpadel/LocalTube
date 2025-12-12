@@ -11,7 +11,27 @@
         <h2 class="text-lg font-semibold text-gray-700 mb-2">Gluetun Integration</h2>
         {% if gluetun_enabled %}
           <p class="text-green-700 font-medium">Enabled</p>
-          <p class="text-sm text-gray-600 mt-1">VPN restarts trigger automatically after 10 consecutive download failures and 30 minutes without success.</p>
+          <p class="text-sm text-gray-600 mt-1">
+            VPN restarts trigger automatically after {{ gluetun_restart_failure_threshold }} consecutive failures (downloads or refreshes) and
+            {{ gluetun_restart_min_success_age_minutes }} minutes without success for the triggering task.
+          </p>
+          <div class="mt-3 flex flex-col gap-2">
+            <div class="flex items-center gap-3">
+              <button
+                class="text-xs py-2 px-4 rounded bg-red-500 text-white disabled:opacity-50 disabled:cursor-not-allowed"
+                hx-post="/status/gluetun/restart"
+                hx-target="#gluetun-restart-result"
+                hx-swap="innerHTML"
+                {% if download_metrics and download_metrics.restart_in_progress %}disabled{% endif %}
+              >
+                Restart VPN
+              </button>
+              {% if download_metrics and download_metrics.restart_in_progress %}
+                <span class="text-sm text-blue-600">Restart in progress…</span>
+              {% endif %}
+            </div>
+            <div id="gluetun-restart-result"></div>
+          </div>
         {% else %}
           <p class="text-red-700 font-medium">Disabled</p>
           <p class="text-sm text-gray-600 mt-1">Set <code class="bg-gray-100 px-1 py-0.5 rounded">LOCALTUBE_GLUETUN_CONTROL_ADDR</code> to enable automatic restarts.</p>

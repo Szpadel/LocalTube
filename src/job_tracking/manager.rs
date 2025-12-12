@@ -312,8 +312,10 @@ impl TaskManager {
             self.gluetun_restart_in_progress
                 .store(false, Ordering::SeqCst);
             let mut metrics = self.metrics.write().unwrap();
-            if let Some(data) = metrics.get_mut(&TaskType::DownloadVideo) {
-                data.restart.in_progress = false;
+            for task_type in [TaskType::DownloadVideo, TaskType::RefreshIndex] {
+                if let Some(data) = metrics.get_mut(&task_type) {
+                    data.restart.in_progress = false;
+                }
             }
         }
 
@@ -331,7 +333,7 @@ impl TaskManager {
     /// # Panics
     ///
     /// Panics if the metrics map lock is poisoned.
-    pub fn begin_gluetun_restart(&self) -> bool {
+    pub fn begin_gluetun_restart(&self, trigger_task: Option<TaskType>) -> bool {
         if !self.gluetun_enabled() {
             return false;
         }
@@ -347,11 +349,18 @@ impl TaskManager {
         let now = Instant::now();
         {
             let mut metrics = self.metrics.write().unwrap();
-            if let Some(data) = metrics.get_mut(&TaskType::DownloadVideo) {
-                data.restart.in_progress = true;
-                data.restart.last_started = Some(now);
-                data.restart.last_error = None;
-                data.restart.last_outcome = None;
+            for task_type in [TaskType::DownloadVideo, TaskType::RefreshIndex] {
+                if let Some(data) = metrics.get_mut(&task_type) {
+                    data.restart.in_progress = true;
+                    data.restart.last_started = Some(now);
+                }
+            }
+
+            if let Some(task_type) = trigger_task {
+                if let Some(data) = metrics.get_mut(&task_type) {
+                    data.restart.last_error = None;
+                    data.restart.last_outcome = None;
+                }
             }
         }
 
@@ -365,23 +374,31 @@ impl TaskManager {
     /// Panics if the metrics map lock is poisoned.
     pub fn finish_gluetun_restart(
         &self,
-        outcome: std::result::Result<GluetunRestartOutcome, GluetunError>,
+        trigger_task: Option<TaskType>,
+        outcome: &std::result::Result<GluetunRestartOutcome, GluetunError>,
     ) {
         let now = Instant::now();
         {
             let mut metrics = self.metrics.write().unwrap();
-            if let Some(data) = metrics.get_mut(&TaskType::DownloadVideo) {
-                data.restart.in_progress = false;
-                data.restart.last_completed = Some(now);
-                match outcome {
-                    Ok(result) => {
-                        data.restart.count += 1;
-                        data.restart.last_outcome = Some(result.to_string());
-                        data.restart.last_error = None;
-                        data.consecutive_failures = 0;
-                    }
-                    Err(err) => {
-                        data.restart.last_error = Some(err.to_string());
+            for task_type in [TaskType::DownloadVideo, TaskType::RefreshIndex] {
+                if let Some(data) = metrics.get_mut(&task_type) {
+                    data.restart.in_progress = false;
+                    data.restart.last_completed = Some(now);
+                }
+            }
+
+            if let Some(task_type) = trigger_task {
+                if let Some(data) = metrics.get_mut(&task_type) {
+                    match outcome {
+                        Ok(result) => {
+                            data.restart.count += 1;
+                            data.restart.last_outcome = Some(result.to_string());
+                            data.restart.last_error = None;
+                            data.consecutive_failures = 0;
+                        }
+                        Err(err) => {
+                            data.restart.last_error = Some(err.to_string());
+                        }
                     }
                 }
             }

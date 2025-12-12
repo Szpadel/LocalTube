@@ -6,7 +6,10 @@ use tokio::runtime::Runtime;
 
 use localtube::{
     job_tracking::{
-        metrics::{AllMetrics, TaskMetrics},
+        metrics::{
+            AllMetrics, TaskMetrics, MAX_CONSECUTIVE_FAILURES_BEFORE_RESTART,
+            MIN_SUCCESS_AGE_BEFORE_RESTART,
+        },
         task::TaskType,
     },
     views,
@@ -68,5 +71,24 @@ fn renders_status_with_download_metrics() {
     assert!(
         body.contains("System Status"),
         "Response body should contain the header indicating successful render"
+    );
+    assert!(
+        body.contains("Restart VPN"),
+        "Response body should include the manual VPN restart control when enabled"
+    );
+
+    let min_success_age_minutes = MIN_SUCCESS_AGE_BEFORE_RESTART.as_secs().div_ceil(60);
+    assert!(
+        body.contains(&format!(
+            "after {} consecutive failures",
+            MAX_CONSECUTIVE_FAILURES_BEFORE_RESTART
+        )),
+        "Response body should include the dynamic restart threshold"
+    );
+    assert!(
+        body.contains(&format!(
+            "{min_success_age_minutes} minutes without success"
+        )),
+        "Response body should include the dynamic restart gate duration"
     );
 }

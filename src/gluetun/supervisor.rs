@@ -39,8 +39,23 @@ pub fn deactivate(task_manager: &TaskManager) {
     task_manager.set_gluetun_enabled(false);
 }
 
+/// Returns the active Gluetun controller when integration is enabled.
+///
+/// # Panics
+///
+/// Panics if the supervisor state mutex is poisoned.
+#[must_use]
+pub fn controller() -> Option<Arc<dyn GluetunController>> {
+    SUPERVISOR
+        .lock()
+        .unwrap()
+        .as_ref()
+        .map(|handle| Arc::clone(&handle.controller))
+}
+
 struct GluetunSupervisorHandle {
     shutdown: Option<oneshot::Sender<()>>,
+    controller: Arc<dyn GluetunController>,
 }
 
 impl GluetunSupervisorHandle {
@@ -50,17 +65,18 @@ impl GluetunSupervisorHandle {
         let initial_metrics = task_manager.get_metrics();
 
         let (shutdown_tx, mut shutdown_rx) = oneshot::channel::<()>();
-        let controller = Arc::clone(controller);
+        let controller_for_task = Arc::clone(controller);
+        let controller_for_handle = Arc::clone(controller);
         let manager_clone = task_manager.clone();
 
         tokio::spawn(async move {
-            handle_metrics(&initial_metrics, &manager_clone, &controller);
+            handle_metrics(&initial_metrics, &manager_clone, &controller_for_task);
             loop {
                 tokio::select! {
                     _ = &mut shutdown_rx => break,
                     recv_result = metrics_rx.recv() => {
                         match recv_result {
-                            Ok(metrics) => handle_metrics(&metrics, &manager_clone, &controller),
+                            Ok(metrics) => handle_metrics(&metrics, &manager_clone, &controller_for_task),
                             Err(tokio::sync::broadcast::error::RecvError::Lagged(skipped)) => {
                                 warn!("Gluetun supervisor lagged {skipped} metrics updates");
                             }
@@ -73,6 +89,7 @@ impl GluetunSupervisorHandle {
 
         Self {
             shutdown: Some(shutdown_tx),
+            controller: controller_for_handle,
         }
     }
 }
@@ -94,27 +111,41 @@ fn handle_metrics(
         return;
     }
 
-    let Some(download_metrics) = all_metrics.tasks.get(&TaskType::DownloadVideo) else {
+    let Some(trigger_task) = select_restart_trigger(all_metrics) else {
         return;
     };
 
-    if !should_trigger_restart(download_metrics) {
-        return;
-    }
-
-    if task_manager.begin_gluetun_restart() {
-        info!("Triggering Gluetun VPN restart after sustained download failures");
+    if task_manager.begin_gluetun_restart(Some(trigger_task.clone())) {
+        info!(
+            "Triggering Gluetun VPN restart after sustained failures: task={}",
+            trigger_task.as_str()
+        );
         let manager = task_manager.clone();
         let controller = Arc::clone(controller);
+        let trigger_task = trigger_task.clone();
         tokio::spawn(async move {
             let outcome = controller.restart().await;
             match &outcome {
                 Ok(result) => info!("Gluetun VPN restart succeeded: {}", result),
                 Err(err) => error!("Gluetun VPN restart failed: {}", err),
             }
-            manager.finish_gluetun_restart(outcome);
+            manager.finish_gluetun_restart(Some(trigger_task), &outcome);
         });
     }
+}
+
+fn select_restart_trigger(metrics: &AllMetrics) -> Option<TaskType> {
+    let download = metrics.tasks.get(&TaskType::DownloadVideo)?;
+    if should_trigger_restart(download) {
+        return Some(TaskType::DownloadVideo);
+    }
+
+    let refresh = metrics.tasks.get(&TaskType::RefreshIndex)?;
+    if should_trigger_restart(refresh) {
+        return Some(TaskType::RefreshIndex);
+    }
+
+    None
 }
 
 fn should_trigger_restart(metrics: &TaskMetrics) -> bool {
