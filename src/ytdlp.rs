@@ -10,6 +10,7 @@ use tracing::{info, warn};
 use yt_dlp::fetcher::deps::Libraries;
 
 const LIBS_DIR: &str = "libs";
+const STREAM_ERROR_MESSAGE: &str = "yt-dlp stream failed; check logs for details";
 static CONCURRENCY_SEMAPHORE: OnceLock<Arc<Semaphore>> = OnceLock::new();
 
 pub fn ytdtp_concurrency() -> &'static Arc<Semaphore> {
@@ -137,9 +138,15 @@ pub async fn download_last_video_metadata(url: &str) -> Result<VideoMetadata> {
 ///
 /// # Note
 ///
+/// The returned stream yields `Ok(VideoMetadata)` entries. If the process
+/// exits non-zero or produces zero items, a single `Err` is sent before
+/// closing the channel.
+///
+/// # Note
+///
 /// This function does not acquire the concurrency semaphore. The caller
 /// must ensure proper concurrency control (typically via `ActiveTask`).
-pub async fn stream_media_list(url: &str) -> tokio::sync::mpsc::Receiver<VideoMetadata> {
+pub async fn stream_media_list(url: &str) -> tokio::sync::mpsc::Receiver<Result<VideoMetadata>> {
     let (tx, rx) = tokio::sync::mpsc::channel(8);
     let url = url.to_string();
     tokio::spawn(async move {
@@ -149,30 +156,93 @@ pub async fn stream_media_list(url: &str) -> tokio::sync::mpsc::Receiver<VideoMe
             .arg("--simulate")
             .arg("-t")
             .arg("sleep")
-            .arg(url)
+            .arg(&url)
             .stdin(std::process::Stdio::null())
             .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
             .kill_on_drop(true)
             .spawn()
             .expect("Failed to spawn yt-dlp");
 
-        let output = cmd.stdout.take().expect("Failed to get yt-dlp stdout");
-        let reader = tokio::io::BufReader::new(output);
-        let mut lines = tokio::io::BufReader::new(reader).lines();
-        while let Ok(Some(line)) = lines.next_line().await {
-            if line.is_empty() {
-                continue;
+        let stdout = cmd.stdout.take().expect("Failed to get yt-dlp stdout");
+        let stderr = cmd.stderr.take().expect("Failed to get yt-dlp stderr");
+        let mut stdout_lines = tokio::io::BufReader::new(stdout).lines();
+        let mut stderr_lines = tokio::io::BufReader::new(stderr).lines();
+        let mut stdout_done = false;
+        let mut stderr_done = false;
+        let mut items_emitted = 0usize;
+
+        while !stdout_done || !stderr_done {
+            tokio::select! {
+                line = stdout_lines.next_line(), if !stdout_done => {
+                    match line {
+                        Ok(Some(line)) => {
+                            if line.is_empty() {
+                                continue;
+                            }
+                            ytdlp_debug::log_ytdlp_line("stream_media_list", &line, Some(&url), None).await;
+                            let video_metadata = match serde_json::from_str::<VideoMetadata>(&line) {
+                                Ok(metadata) => metadata,
+                                Err(err) => {
+                                    warn!(error = %err, "failed to parse yt-dlp JSON line");
+                                    continue;
+                                }
+                            };
+                            if tx.send(Ok(video_metadata)).await.is_err() || tx.is_closed() {
+                                // Receiver was dropped, terminate the command
+                                if let Err(err) = cmd.terminate_wait().await {
+                                    warn!(error = %err, "failed to terminate yt-dlp");
+                                }
+                                return;
+                            }
+                            items_emitted += 1;
+                        }
+                        Ok(None) => {
+                            stdout_done = true;
+                        }
+                        Err(err) => {
+                            warn!(error = %err, "failed to read yt-dlp stdout line");
+                            stdout_done = true;
+                        }
+                    }
+                }
+                line = stderr_lines.next_line(), if !stderr_done => {
+                    match line {
+                        Ok(Some(line)) => {
+                            if line.is_empty() {
+                                continue;
+                            }
+                            ytdlp_debug::log_ytdlp_line("stream_media_list_stderr", &line, Some(&url), None).await;
+                        }
+                        Ok(None) => {
+                            stderr_done = true;
+                        }
+                        Err(err) => {
+                            warn!(error = %err, "failed to read yt-dlp stderr line");
+                            stderr_done = true;
+                        }
+                    }
+                }
             }
-            ytdlp_debug::log_ytdlp_line("stream_media_list", &line, None, None).await;
-            let video_metadata: VideoMetadata = serde_json::from_str(&line).unwrap();
-            if tx.send(video_metadata).await.is_err() || tx.is_closed() {
-                // Receiver was dropped, terminate the command
-                cmd.terminate_wait().await.unwrap();
-                break;
+        }
+
+        let exit_success = match cmd.wait().await {
+            Ok(status) => status.success(),
+            Err(err) => {
+                warn!(error = %err, "failed to wait on yt-dlp");
+                false
             }
+        };
+
+        if stream_should_fail(exit_success, items_emitted) {
+            let _ = tx.send(Err(Error::string(STREAM_ERROR_MESSAGE))).await;
         }
     });
     rx
+}
+
+fn stream_should_fail(exit_success: bool, items_emitted: usize) -> bool {
+    !exit_success || items_emitted == 0
 }
 
 /// Downloads media from given URL
@@ -257,4 +327,24 @@ pub async fn download_media(
         .map_err(|_| Error::string("Invalid media path"))?
         .to_string_lossy()
         .to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::stream_should_fail;
+
+    #[test]
+    fn stream_should_fail_when_exit_success_but_no_items() {
+        assert!(stream_should_fail(true, 0));
+    }
+
+    #[test]
+    fn stream_should_fail_when_exit_failure_even_with_items() {
+        assert!(stream_should_fail(false, 3));
+    }
+
+    #[test]
+    fn stream_should_succeed_when_exit_success_and_items_present() {
+        assert!(!stream_should_fail(true, 2));
+    }
 }

@@ -121,7 +121,11 @@ impl BackgroundWorker<FetchSourceInfoWorkerArgs> for FetchSourceInfoWorker {
                 let mut media_stream = stream_media_list(&source.url).await;
                 let mut media_count = 0;
 
-                while let Some(metadata) = media_stream.recv().await {
+                while let Some(item) = media_stream.recv().await {
+                    let metadata = match item {
+                        Ok(metadata) => metadata,
+                        Err(err) => return Err(err),
+                    };
                     media_count += 1;
 
                     if let Some(task) = &task {
