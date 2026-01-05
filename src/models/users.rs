@@ -2,6 +2,7 @@ use async_trait::async_trait;
 use chrono::offset::Local;
 use loco_rs::{auth::jwt, hash, prelude::*};
 use serde::{Deserialize, Serialize};
+use serde_json::Map;
 use uuid::Uuid;
 
 pub use super::_entities::users::{self, ActiveModel, Entity, Model};
@@ -23,7 +24,7 @@ pub struct RegisterParams {
 pub struct Validator {
     #[validate(length(min = 2, message = "Name must be at least 2 characters long."))]
     pub name: String,
-    #[validate(custom(function = "validation::is_valid_email"))]
+    #[validate(email(message = "Email must be valid."))]
     pub email: String,
 }
 
@@ -219,8 +220,9 @@ impl super::_entities::users::Model {
     /// # Errors
     ///
     /// when could not convert user claims to jwt token
-    pub fn generate_jwt(&self, secret: &str, expiration: &u64) -> ModelResult<String> {
-        Ok(jwt::JWT::new(secret).generate_token(expiration, self.pid.to_string(), None)?)
+    pub fn generate_jwt(&self, secret: &str, expiration: u64) -> ModelResult<String> {
+        let claims = Map::new();
+        Ok(jwt::JWT::new(secret).generate_token(expiration, self.pid.to_string(), claims)?)
     }
 }
 

@@ -7,7 +7,7 @@ use tokio::sync::Semaphore;
 use tokio::{io::AsyncBufReadExt, process::Command};
 use tokio_process_terminate::TerminateExt;
 use tracing::{info, warn};
-use yt_dlp::fetcher::deps::Libraries;
+use yt_dlp::client::deps::Libraries;
 
 const LIBS_DIR: &str = "libs";
 const STREAM_ERROR_MESSAGE: &str = "yt-dlp stream failed; check logs for details";

@@ -1,10 +1,11 @@
 use std::collections::HashMap;
 
 use axum::body;
-use loco_rs::{controller::views::engines, prelude::*};
+use loco_rs::prelude::*;
 use tokio::runtime::Runtime;
 
 use localtube::{
+    initializers::view_engine::build_test_tera_engine,
     job_tracking::{
         metrics::{
             AllMetrics, TaskMetrics, MAX_CONSECUTIVE_FAILURES_BEFORE_RESTART,
@@ -17,7 +18,7 @@ use localtube::{
 
 #[test]
 fn renders_status_without_download_metrics() {
-    let view_engine = engines::TeraView::build().expect("TeraView build should succeed");
+    let view_engine = build_test_tera_engine().expect("TeraView build should succeed");
     let metrics = AllMetrics {
         tasks: HashMap::new(),
         gluetun_enabled: false,
@@ -57,7 +58,7 @@ fn renders_status_with_download_metrics() {
         gluetun_enabled: true,
     };
 
-    let view_engine = engines::TeraView::build().expect("TeraView build should succeed");
+    let view_engine = build_test_tera_engine().expect("TeraView build should succeed");
     let response = views::status::show(&view_engine, &metrics)
         .expect("Rendering status view with download metrics should succeed")
         .into_response();

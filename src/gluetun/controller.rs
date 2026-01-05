@@ -71,7 +71,8 @@ impl HttpGluetunController {
     pub fn new(config: GluetunConfig) -> Result<Self> {
         let client = Client::builder()
             .user_agent("localtube-gluetun-integration")
-            .build()?;
+            .build()
+            .map_err(|err| loco_rs::Error::Any(Box::new(err)))?;
 
         Ok(Self { client, config })
     }
