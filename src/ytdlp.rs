@@ -98,6 +98,60 @@ pub struct VideoMetadata {
     pub filename: String,
 }
 
+#[derive(Debug, PartialEq, Eq, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SourceListKind {
+    Video,
+    List,
+}
+
+#[derive(Debug, PartialEq, Eq, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SourceListOrder {
+    NewestFirst,
+    OldestFirst,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum MediaListOrder {
+    Original,
+    Reverse,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ListProbeMode {
+    Minimal,
+    OrderAware,
+}
+
+#[derive(Debug, Clone)]
+pub struct ListProbe {
+    pub list_kind: SourceListKind,
+    pub list_count: Option<u64>,
+    pub list_order: Option<SourceListOrder>,
+    pub uploader: Option<String>,
+    pub source_provider: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct ProbeOutput {
+    #[serde(rename = "_type")]
+    kind: Option<String>,
+    playlist_count: Option<u64>,
+    uploader: Option<String>,
+    extractor_key: Option<String>,
+    entries: Option<Vec<ProbeEntry>>,
+}
+
+#[derive(Deserialize)]
+struct ProbeEntry {
+    timestamp: Option<i64>,
+    upload_date: Option<String>,
+    uploader: Option<String>,
+    extractor_key: Option<String>,
+    playlist_count: Option<u64>,
+}
+
 /// Downloads metadata for the last video from given URL
 ///
 /// # Errors
@@ -130,6 +184,100 @@ pub async fn download_last_video_metadata(url: &str) -> Result<VideoMetadata> {
     Ok(video_metadata)
 }
 
+/// Probes list metadata for the given URL.
+///
+/// # Errors
+///
+/// Returns error if yt-dlp fails or the response parsing fails.
+pub async fn probe_list_metadata(url: &str, mode: ListProbeMode) -> Result<ListProbe> {
+    let item_spec = match mode {
+        ListProbeMode::Minimal => "1:1",
+        ListProbeMode::OrderAware => "1:2",
+    };
+    let output = Command::new(yt_dlp_path())
+        .arg("--dump-single-json")
+        .arg("-I")
+        .arg(item_spec)
+        .arg("--simulate")
+        .arg(url)
+        .output()
+        .await?;
+
+    // Use a tiny probe to avoid loading entire large lists just to detect order/count.
+    ytdlp_debug::log_ytdlp_json("probe_list_metadata", &output.stdout, Some(url), None).await;
+    let probe: ProbeOutput = serde_json::from_slice(&output.stdout)?;
+
+    let entries = probe.entries.unwrap_or_default();
+    let list_kind = match probe.kind.as_deref() {
+        Some("video") => SourceListKind::Video,
+        Some("playlist") => SourceListKind::List,
+        _ => {
+            if entries.is_empty() {
+                SourceListKind::Video
+            } else {
+                SourceListKind::List
+            }
+        }
+    };
+
+    let list_count = probe
+        .playlist_count
+        .or_else(|| entries.first().and_then(|e| e.playlist_count));
+
+    let uploader = entries
+        .first()
+        .and_then(|e| e.uploader.clone())
+        .or(probe.uploader);
+    let source_provider = entries
+        .first()
+        .and_then(|e| e.extractor_key.clone())
+        .or(probe.extractor_key);
+
+    let list_order = match mode {
+        ListProbeMode::OrderAware => detect_list_order(&entries),
+        ListProbeMode::Minimal => None,
+    };
+
+    Ok(ListProbe {
+        list_kind,
+        list_count,
+        list_order,
+        uploader,
+        source_provider,
+    })
+}
+
+fn detect_list_order(entries: &[ProbeEntry]) -> Option<SourceListOrder> {
+    if entries.len() < 2 {
+        return None;
+    }
+
+    let first = entry_timestamp(&entries[0])?;
+    let second = entry_timestamp(&entries[1])?;
+    if first == second {
+        return None;
+    }
+
+    if first < second {
+        Some(SourceListOrder::OldestFirst)
+    } else {
+        Some(SourceListOrder::NewestFirst)
+    }
+}
+
+fn entry_timestamp(entry: &ProbeEntry) -> Option<i64> {
+    entry
+        .timestamp
+        .or_else(|| entry.upload_date.as_deref().and_then(parse_upload_date))
+}
+
+fn parse_upload_date(value: &str) -> Option<i64> {
+    if value.len() != 8 || !value.chars().all(|c| c.is_ascii_digit()) {
+        return None;
+    }
+    value.parse::<i64>().ok()
+}
+
 /// Streams media list from a given URL
 ///
 /// # Panics
@@ -146,7 +294,10 @@ pub async fn download_last_video_metadata(url: &str) -> Result<VideoMetadata> {
 ///
 /// This function does not acquire the concurrency semaphore. The caller
 /// must ensure proper concurrency control (typically via `ActiveTask`).
-pub async fn stream_media_list(url: &str) -> tokio::sync::mpsc::Receiver<Result<VideoMetadata>> {
+pub async fn stream_media_list(
+    url: &str,
+    order: MediaListOrder,
+) -> tokio::sync::mpsc::Receiver<Result<VideoMetadata>> {
     let (tx, rx) = tokio::sync::mpsc::channel(8);
     let url = url.to_string();
     tokio::spawn(async move {
@@ -156,6 +307,10 @@ pub async fn stream_media_list(url: &str) -> tokio::sync::mpsc::Receiver<Result<
             .arg("--simulate")
             .arg("-t")
             .arg("sleep")
+            .args(match order {
+                MediaListOrder::Original => &[][..],
+                MediaListOrder::Reverse => &["-I", "::-1"][..],
+            })
             .arg(&url)
             .stdin(std::process::Stdio::null())
             .stdout(std::process::Stdio::piped())
@@ -331,7 +486,17 @@ pub async fn download_media(
 
 #[cfg(test)]
 mod tests {
-    use super::stream_should_fail;
+    use super::{detect_list_order, stream_should_fail, ProbeEntry, SourceListOrder};
+
+    fn entry(timestamp: Option<i64>, upload_date: Option<&str>) -> ProbeEntry {
+        ProbeEntry {
+            timestamp,
+            upload_date: upload_date.map(str::to_string),
+            uploader: None,
+            extractor_key: None,
+            playlist_count: None,
+        }
+    }
 
     #[test]
     fn stream_should_fail_when_exit_success_but_no_items() {
@@ -346,5 +511,29 @@ mod tests {
     #[test]
     fn stream_should_succeed_when_exit_success_and_items_present() {
         assert!(!stream_should_fail(true, 2));
+    }
+
+    #[test]
+    fn detect_list_order_uses_timestamps() {
+        let entries = vec![entry(Some(100), None), entry(Some(200), None)];
+        assert_eq!(
+            detect_list_order(&entries),
+            Some(SourceListOrder::OldestFirst)
+        );
+    }
+
+    #[test]
+    fn detect_list_order_uses_upload_date_fallback() {
+        let entries = vec![entry(None, Some("20240101")), entry(None, Some("20240102"))];
+        assert_eq!(
+            detect_list_order(&entries),
+            Some(SourceListOrder::OldestFirst)
+        );
+    }
+
+    #[test]
+    fn detect_list_order_returns_none_when_undetermined() {
+        let entries = vec![entry(None, None), entry(None, None)];
+        assert_eq!(detect_list_order(&entries), None);
     }
 }

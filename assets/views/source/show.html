@@ -16,6 +16,18 @@ View Source: {{ item.id }}
     {% if item.metadata %}
         <p class="mb-4"><span class="font-bold">Video Count:</span> {{ item.metadata.items }}</p>
         <p class="mb-4"><span class="font-bold">Source Provider:</span> {{ item.metadata.source_provider }}</p>
+        <p class="mb-4">
+            <span class="font-bold">List Kind:</span>
+            {% if item.metadata.list_kind %}{{ item.metadata.list_kind }}{% else %}unknown{% endif %}
+        </p>
+        <p class="mb-4">
+            <span class="font-bold">List Count:</span>
+            {% if item.metadata.list_count %}{{ item.metadata.list_count }}{% else %}unknown{% endif %}
+        </p>
+        <p class="mb-4">
+            <span class="font-bold">List Order:</span>
+            {% if item.metadata.list_order %}{{ item.metadata.list_order }}{% else %}unknown{% endif %}
+        </p>
     {% endif %}
     <p class="mb-4"><span class="font-bold">URL:</span> {{ item.url }}</p>
     <p class="mb-4"><span class="font-bold">Fetch Last Days:</span> {{ item.fetch_last_days }}</p>

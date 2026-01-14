@@ -43,6 +43,12 @@ pub struct SourceMetadata {
     pub uploader: String,
     pub items: u64,
     pub source_provider: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub list_kind: Option<crate::ytdlp::SourceListKind>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub list_count: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub list_order: Option<crate::ytdlp::SourceListOrder>,
 }
 
 impl From<crate::ytdlp::VideoMetadata> for SourceMetadata {
@@ -51,6 +57,9 @@ impl From<crate::ytdlp::VideoMetadata> for SourceMetadata {
             uploader: v.uploader,
             items: v.n_entries.unwrap_or(0),
             source_provider: v.extractor_key,
+            list_kind: None,
+            list_count: None,
+            list_order: None,
         }
     }
 }

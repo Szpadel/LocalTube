@@ -7,7 +7,7 @@ use crate::{
     job_tracking::{manager::register_refresh_task, task::ActiveTask},
     models::medias::MediaMetadata,
     workers::fetch_media::{FetchMediaWorker, FetchMediaWorkerArgs},
-    ytdlp::{self, download_last_video_metadata},
+    ytdlp::{self, ListProbeMode, MediaListOrder, SourceListKind, SourceListOrder},
 };
 use crate::{
     models::{
@@ -16,8 +16,52 @@ use crate::{
         },
         sources::SourceMetadata,
     },
-    ytdlp::stream_media_list,
+    ytdlp::{probe_list_metadata, stream_media_list},
 };
+
+const SMALL_LIST_THRESHOLD: u64 = 25;
+
+fn probe_mode_for(metadata: Option<&SourceMetadata>) -> ListProbeMode {
+    match metadata {
+        None => ListProbeMode::OrderAware,
+        Some(meta) => match meta.list_kind.as_ref() {
+            Some(SourceListKind::Video) => ListProbeMode::Minimal,
+            Some(SourceListKind::List) => {
+                if meta.list_order.is_some() {
+                    // Order is already known; keep it stable and just refresh counts.
+                    ListProbeMode::Minimal
+                } else {
+                    // We do not know ordering yet; probe two items to infer it once.
+                    ListProbeMode::OrderAware
+                }
+            }
+            None => ListProbeMode::OrderAware,
+        },
+    }
+}
+
+fn should_stop_early(list_kind: Option<&SourceListKind>, list_count: Option<u64>) -> bool {
+    match list_kind {
+        Some(SourceListKind::List) => {
+            // Small lists are safe to scan fully; large lists need early stop.
+            !matches!(list_count, Some(count) if count <= SMALL_LIST_THRESHOLD)
+        }
+        _ => true,
+    }
+}
+
+fn stream_order_for(
+    list_kind: Option<&SourceListKind>,
+    list_order: Option<&SourceListOrder>,
+) -> MediaListOrder {
+    match list_kind {
+        Some(SourceListKind::List) => match list_order.unwrap_or(&SourceListOrder::OldestFirst) {
+            SourceListOrder::NewestFirst => MediaListOrder::Original,
+            SourceListOrder::OldestFirst => MediaListOrder::Reverse,
+        },
+        _ => MediaListOrder::Original,
+    }
+}
 pub struct FetchSourceInfoWorker {
     pub ctx: AppContext,
 }
@@ -90,12 +134,50 @@ impl BackgroundWorker<FetchSourceInfoWorkerArgs> for FetchSourceInfoWorker {
 
                 task = Some(active);
 
-                let metadata = download_last_video_metadata(&source.url)
+                let existing_metadata = source.get_metadata();
+                let probe_mode = probe_mode_for(existing_metadata.as_ref());
+                // Delegate list detection to yt-dlp so all providers stay supported.
+                let probe = probe_list_metadata(&source.url, probe_mode)
                     .await
-                    .map_err(|e| {
-                        Error::string(&format!("Failed to fetch channel metadata: {e}"))
-                    })?;
-                let source_metadata: SourceMetadata = metadata.into();
+                    .map_err(|e| Error::string(&format!("Failed to probe source metadata: {e}")))?;
+                let list_kind = Some(probe.list_kind);
+                let list_count = probe
+                    .list_count
+                    .or_else(|| existing_metadata.as_ref().and_then(|m| m.list_count));
+                // Once order is known, keep it stable across refreshes.
+                let list_order = probe.list_order.or_else(|| {
+                    existing_metadata
+                        .as_ref()
+                        .and_then(|m| m.list_order.clone())
+                });
+                let uploader = probe
+                    .uploader
+                    .or_else(|| existing_metadata.as_ref().map(|m| m.uploader.clone()))
+                    .unwrap_or_else(|| source.url.clone());
+                let source_provider = probe
+                    .source_provider
+                    .or_else(|| {
+                        existing_metadata
+                            .as_ref()
+                            .map(|m| m.source_provider.clone())
+                    })
+                    .unwrap_or_else(|| "unknown".to_string());
+                // For single videos, enforce a count of 1 to keep UI consistent.
+                let items = match list_kind {
+                    Some(SourceListKind::Video) => 1,
+                    Some(SourceListKind::List) => list_count
+                        .unwrap_or_else(|| existing_metadata.as_ref().map_or(0, |m| m.items)),
+                    None => existing_metadata.as_ref().map_or(0, |m| m.items),
+                };
+
+                let source_metadata = SourceMetadata {
+                    uploader,
+                    items,
+                    source_provider,
+                    list_kind,
+                    list_count,
+                    list_order,
+                };
 
                 let source_update = SourceActiveModel {
                     id: Set(source.id),
@@ -118,7 +200,15 @@ impl BackgroundWorker<FetchSourceInfoWorkerArgs> for FetchSourceInfoWorker {
                     .unwrap()
                     .timestamp();
 
-                let mut media_stream = stream_media_list(&source.url).await;
+                let should_stop_early = should_stop_early(
+                    source_metadata.list_kind.as_ref(),
+                    source_metadata.list_count,
+                );
+                let stream_order = stream_order_for(
+                    source_metadata.list_kind.as_ref(),
+                    source_metadata.list_order.as_ref(),
+                );
+                let mut media_stream = stream_media_list(&source.url, stream_order).await;
                 let mut media_count = 0;
 
                 while let Some(item) = media_stream.recv().await {
@@ -140,7 +230,7 @@ impl BackgroundWorker<FetchSourceInfoWorkerArgs> for FetchSourceInfoWorker {
                         "{}: Fetching media info for {}",
                         &source_metadata.uploader, &metadata.title
                     );
-                    if metadata.timestamp < fetch_before_timestamp {
+                    if should_stop_early && metadata.timestamp < fetch_before_timestamp {
                         break;
                     }
 
