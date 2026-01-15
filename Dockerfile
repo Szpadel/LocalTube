@@ -1,20 +1,23 @@
-FROM rust:1.90-slim AS builder
+# syntax=docker/dockerfile:1.7-labs
 
-RUN apt-get update && apt-get install -y libssl-dev pkg-config
-
+FROM rust:1.90-slim AS chef
 WORKDIR /usr/src/
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    pkg-config \
+    libssl-dev \
+  && rm -rf /var/lib/apt/lists/*
+RUN cargo install cargo-chef --locked
 
+FROM chef AS planner
 COPY Cargo.toml Cargo.lock ./
 COPY migration/Cargo.toml migration/Cargo.toml
-RUN mkdir -p src/bin migration/src \
-  && printf 'fn main() {}\n' > src/bin/main.rs \
-  && printf 'fn main() {}\n' > src/bin/tool.rs \
-  && touch src/lib.rs migration/src/lib.rs
-RUN cargo build --release --bins
+RUN cargo chef prepare --recipe-path recipe.json
 
+FROM chef AS builder
+COPY --from=planner /usr/src/recipe.json recipe.json
+RUN cargo chef cook --release --recipe-path recipe.json
 COPY . .
-
-RUN cargo build --release
+RUN cargo build --release --bins
 
 FROM rust:1.90-slim AS cargo
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -33,7 +36,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 RUN cargo install deno --locked
 
 FROM debian:trixie-slim
-
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     tini \
