@@ -30,6 +30,18 @@ Edit Source: {% if item.metadata %}
                 {% endfor %}
             </select>
         </div>
+        {% if item.metadata and item.metadata.list_tabs %}
+        <div class="mb-4">
+            <label class="block font-bold mb-2">Content Tab</label>
+            <select id="list_tab" name="list_tab" class="border border-gray-300 rounded w-full py-2 px-3">
+                <option value="auto" {% if not item.metadata.list_tab %}selected{% endif %}>Default (auto)</option>
+                {% for tab in item.metadata.list_tabs %}
+                    <option value="{{ tab.url }}" {% if item.metadata.list_tab and tab.url == item.metadata.list_tab %}selected{% endif %}>{{ tab.label }}</option>
+                {% endfor %}
+            </select>
+            <p class="text-xs text-gray-500 mt-1">Choosing a tab changes which items are fetched.</p>
+        </div>
+        {% endif %}
         <div class="flex space-x-4">
             <button class="text-xs py-2 px-4 rounded bg-red-500 text-white" type="submit">Submit</button>
             <button class="text-xs py-2 px-4 rounded bg-red-600 text-white" onclick="confirmDelete(event)">Delete</button>

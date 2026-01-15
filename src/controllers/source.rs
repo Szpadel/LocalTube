@@ -18,6 +18,7 @@ pub struct Params {
     pub fetch_last_days: i32,
     pub sponsorblock: String,
     pub refresh_frequency: i32,
+    pub list_tab: Option<String>,
 }
 
 impl Params {
@@ -28,6 +29,15 @@ impl Params {
         item.fetch_last_days = Set(self.fetch_last_days);
         item.sponsorblock = Set(self.sponsorblock.clone());
         item.refresh_frequency = Set(self.refresh_frequency);
+    }
+}
+
+fn normalize_list_tab(value: &str) -> Option<String> {
+    let trimmed = value.trim();
+    if trimmed.is_empty() || trimmed.eq_ignore_ascii_case("auto") {
+        None
+    } else {
+        Some(trimmed.trim_end_matches('/').to_string())
     }
 }
 
@@ -62,9 +72,39 @@ pub async fn update(
     State(ctx): State<AppContext>,
     Json(params): Json<Params>,
 ) -> Result<Response> {
-    let item = load_item(&ctx, id).await?;
-    let mut item = item.into_active_model();
+    let model = load_item(&ctx, id).await?;
+    let mut item = model.clone().into_active_model();
     params.update(&mut item);
+    let url_changed = params.url.as_ref().is_some_and(|url| url != &model.url);
+    if let Some(mut metadata) = model.get_metadata() {
+        let mut metadata_changed = false;
+        if url_changed {
+            metadata.list_tab = None;
+            metadata.list_tabs = None;
+            metadata.items = 0;
+            metadata.list_order = None;
+            metadata.list_count = None;
+            metadata_changed = true;
+        }
+        if let Some(list_tab) = params.list_tab.as_ref() {
+            let normalized = normalize_list_tab(list_tab);
+            let changed = metadata.list_tab != normalized;
+            if changed {
+                // Clearing cached order/count forces a fresh probe for the new tab.
+                metadata.list_tab = normalized;
+                metadata.items = 0;
+                metadata.list_order = None;
+                metadata.list_count = None;
+                metadata_changed = true;
+            }
+        }
+        if metadata_changed {
+            item.metadata =
+                Set(Some(serde_json::to_value(metadata).map_err(|_| {
+                    Error::string("Failed to serialize source metadata")
+                })?));
+        }
+    }
     let item = item.update(&ctx.db).await?;
     FetchSourceInfoWorker::perform_later(&ctx, FetchSourceInfoWorkerArgs { source_id: item.id })
         .await?;

@@ -49,6 +49,10 @@ pub struct SourceMetadata {
     pub list_count: Option<u64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub list_order: Option<crate::ytdlp::SourceListOrder>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub list_tab: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub list_tabs: Option<Vec<crate::ytdlp::SourceListTabOption>>,
 }
 
 impl From<crate::ytdlp::VideoMetadata> for SourceMetadata {
@@ -60,6 +64,8 @@ impl From<crate::ytdlp::VideoMetadata> for SourceMetadata {
             list_kind: None,
             list_count: None,
             list_order: None,
+            list_tab: None,
+            list_tabs: None,
         }
     }
 }

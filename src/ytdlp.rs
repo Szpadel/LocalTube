@@ -112,6 +112,12 @@ pub enum SourceListOrder {
     OldestFirst,
 }
 
+#[derive(Debug, PartialEq, Eq, Clone, Deserialize, Serialize)]
+pub struct SourceListTabOption {
+    pub url: String,
+    pub label: String,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum MediaListOrder {
     Original,
@@ -145,11 +151,16 @@ struct ProbeOutput {
 
 #[derive(Deserialize)]
 struct ProbeEntry {
+    #[serde(rename = "_type")]
+    kind: Option<String>,
     timestamp: Option<i64>,
     upload_date: Option<String>,
     uploader: Option<String>,
     extractor_key: Option<String>,
     playlist_count: Option<u64>,
+    webpage_url: Option<String>,
+    url: Option<String>,
+    title: Option<String>,
 }
 
 /// Downloads metadata for the last video from given URL
@@ -245,6 +256,98 @@ pub async fn probe_list_metadata(url: &str, mode: ListProbeMode) -> Result<ListP
         uploader,
         source_provider,
     })
+}
+
+/// Probes list tabs for the given URL using a flat, tiny request.
+///
+/// # Errors
+///
+/// Returns error if yt-dlp fails or the response parsing fails.
+pub async fn probe_list_tabs(url: &str) -> Result<Vec<SourceListTabOption>> {
+    const TAB_PROBE_MAX: usize = 10;
+    let run_probe = |flat: bool| async move {
+        let mut cmd = Command::new(yt_dlp_path());
+        cmd.arg("--dump-single-json")
+            .arg("-I")
+            // Use a small cap to avoid scanning huge lists while still capturing all tabs.
+            .arg(format!("1:{TAB_PROBE_MAX}"))
+            .arg("--simulate")
+            .arg(url);
+        if flat {
+            cmd.arg("--flat-playlist");
+        }
+        let output = cmd.output().await?;
+        let extra = if flat { Some("flat") } else { None };
+        // Small capped probe prevents expanding the entire channel while still exposing tab URLs.
+        ytdlp_debug::log_ytdlp_json("probe_list_tabs", &output.stdout, Some(url), extra).await;
+        let probe: ProbeOutput = serde_json::from_slice(&output.stdout)?;
+        Ok::<_, Error>(extract_list_tabs(&probe.entries.unwrap_or_default()))
+    };
+
+    let mut tabs = run_probe(false).await?;
+    if tabs.is_empty() {
+        // Some extractors only expose tab URLs in flat playlist mode.
+        tabs = run_probe(true).await?;
+    }
+    Ok(tabs)
+}
+
+fn extract_list_tabs(entries: &[ProbeEntry]) -> Vec<SourceListTabOption> {
+    let mut tabs = Vec::new();
+    let mut seen = std::collections::HashSet::new();
+    for entry in entries {
+        let url = entry
+            .webpage_url
+            .as_ref()
+            .or(entry.url.as_ref())
+            .map(|u| normalize_tab_url(u));
+        let Some(url) = url else {
+            continue;
+        };
+        if !entry_is_tab_candidate(entry, &url) {
+            continue;
+        }
+        if !seen.insert(url.clone()) {
+            continue;
+        }
+        let label = known_tab_label(&url)
+            .map(str::to_string)
+            .or_else(|| entry.title.clone())
+            .unwrap_or_else(|| url.clone());
+        tabs.push(SourceListTabOption { url, label });
+    }
+    tabs
+}
+
+fn entry_is_tab_candidate(entry: &ProbeEntry, url: &str) -> bool {
+    let known_tab = known_tab_label(url).is_some();
+    if known_tab {
+        return true;
+    }
+    if matches!(entry.kind.as_deref(), Some("playlist")) {
+        return matches!(entry.extractor_key.as_deref(), Some("YoutubeTab"));
+    }
+    matches!(entry.kind.as_deref(), Some("url") | None) && known_tab
+}
+
+fn normalize_tab_url(url: &str) -> String {
+    url.trim_end_matches('/').to_string()
+}
+
+fn known_tab_label(url: &str) -> Option<&'static str> {
+    let url = url.split(['?', '#']).next().unwrap_or(url);
+    let url = url.trim_end_matches('/');
+    if url.ends_with("/videos") {
+        Some("Videos")
+    } else if url.ends_with("/streams") {
+        Some("Streams")
+    } else if url.ends_with("/shorts") {
+        Some("Shorts")
+    } else if url.ends_with("/playlists") {
+        Some("Playlists")
+    } else {
+        None
+    }
 }
 
 fn detect_list_order(entries: &[ProbeEntry]) -> Option<SourceListOrder> {
@@ -486,15 +589,22 @@ pub async fn download_media(
 
 #[cfg(test)]
 mod tests {
-    use super::{detect_list_order, stream_should_fail, ProbeEntry, SourceListOrder};
+    use super::{
+        detect_list_order, extract_list_tabs, stream_should_fail, ProbeEntry, SourceListOrder,
+        SourceListTabOption,
+    };
 
     fn entry(timestamp: Option<i64>, upload_date: Option<&str>) -> ProbeEntry {
         ProbeEntry {
+            kind: None,
             timestamp,
             upload_date: upload_date.map(str::to_string),
             uploader: None,
             extractor_key: None,
             playlist_count: None,
+            webpage_url: None,
+            url: None,
+            title: None,
         }
     }
 
@@ -535,5 +645,40 @@ mod tests {
     fn detect_list_order_returns_none_when_undetermined() {
         let entries = vec![entry(None, None), entry(None, None)];
         assert_eq!(detect_list_order(&entries), None);
+    }
+
+    #[test]
+    fn extract_list_tabs_filters_non_tab_urls() {
+        let entries = vec![
+            ProbeEntry {
+                kind: Some("url".to_string()),
+                timestamp: None,
+                upload_date: None,
+                uploader: None,
+                extractor_key: None,
+                playlist_count: None,
+                webpage_url: Some("https://example.com/other".to_string()),
+                url: None,
+                title: Some("Other".to_string()),
+            },
+            ProbeEntry {
+                kind: Some("url".to_string()),
+                timestamp: None,
+                upload_date: None,
+                uploader: None,
+                extractor_key: None,
+                playlist_count: None,
+                webpage_url: Some("https://example.com/videos".to_string()),
+                url: None,
+                title: Some("Videos".to_string()),
+            },
+        ];
+        assert_eq!(
+            extract_list_tabs(&entries),
+            vec![SourceListTabOption {
+                url: "https://example.com/videos".to_string(),
+                label: "Videos".to_string(),
+            }]
+        );
     }
 }

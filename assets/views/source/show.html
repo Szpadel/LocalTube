@@ -14,7 +14,11 @@ View Source: {{ item.id }}
 </h1>
 <div class="bg-white rounded-lg shadow p-6 mb-10">
     {% if item.metadata %}
-        <p class="mb-4"><span class="font-bold">Video Count:</span> {{ item.metadata.items }}</p>
+        {% if item.metadata.list_tabs and (not item.metadata.list_tab or (item.metadata.list_tab and item.metadata.list_count is none and item.metadata.items == 0)) %}
+            <p class="mb-4"><span class="font-bold">Video Count:</span> unknown (select tab)</p>
+        {% else %}
+            <p class="mb-4"><span class="font-bold">Video Count:</span> {{ item.metadata.items }}</p>
+        {% endif %}
         <p class="mb-4"><span class="font-bold">Source Provider:</span> {{ item.metadata.source_provider }}</p>
         <p class="mb-4">
             <span class="font-bold">List Kind:</span>
@@ -28,6 +32,12 @@ View Source: {{ item.id }}
             <span class="font-bold">List Order:</span>
             {% if item.metadata.list_order %}{{ item.metadata.list_order }}{% else %}unknown{% endif %}
         </p>
+        {% if item.metadata.list_tabs %}
+        <p class="mb-4">
+            <span class="font-bold">Selected Tab:</span>
+            {% if item.metadata.list_tab %}{{ item.metadata.list_tab }}{% else %}default{% endif %}
+        </p>
+        {% endif %}
     {% endif %}
     <p class="mb-4"><span class="font-bold">URL:</span> {{ item.url }}</p>
     <p class="mb-4"><span class="font-bold">Fetch Last Days:</span> {{ item.fetch_last_days }}</p>

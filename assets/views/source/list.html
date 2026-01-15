@@ -17,7 +17,11 @@ List of Sources
             {% endif %}
         </h2>
         {% if item.metadata %}
-            <p class="mb-2"><span class="font-bold">Video Count:</span> {{ item.metadata.items }}</p>
+            {% if item.metadata.list_tabs and (not item.metadata.list_tab or (item.metadata.list_tab and item.metadata.list_count is none and item.metadata.items == 0)) %}
+                <p class="mb-2"><span class="font-bold">Video Count:</span> unknown (select tab)</p>
+            {% else %}
+                <p class="mb-2"><span class="font-bold">Video Count:</span> {{ item.metadata.items }}</p>
+            {% endif %}
             <p class="mb-2"><span class="font-bold">Source Provider:</span> {{ item.metadata.source_provider }}</p>
         {% endif %}
         <p class="mb-2"><span class="font-bold">Fetch Last Days:</span> {{ item.fetch_last_days }}</p>

@@ -16,7 +16,7 @@ use crate::{
         },
         sources::SourceMetadata,
     },
-    ytdlp::{probe_list_metadata, stream_media_list},
+    ytdlp::{probe_list_metadata, probe_list_tabs, stream_media_list, SourceListTabOption},
 };
 
 const SMALL_LIST_THRESHOLD: u64 = 25;
@@ -55,12 +55,63 @@ fn stream_order_for(
     list_order: Option<&SourceListOrder>,
 ) -> MediaListOrder {
     match list_kind {
-        Some(SourceListKind::List) => match list_order.unwrap_or(&SourceListOrder::OldestFirst) {
-            SourceListOrder::NewestFirst => MediaListOrder::Original,
-            SourceListOrder::OldestFirst => MediaListOrder::Reverse,
+        Some(SourceListKind::List) => match list_order {
+            Some(SourceListOrder::OldestFirst) => MediaListOrder::Reverse,
+            _ => MediaListOrder::Original,
         },
         _ => MediaListOrder::Original,
     }
+}
+
+fn normalize_tab_value(value: &str) -> String {
+    let trimmed = value.trim();
+    let path = strip_query_fragment(trimmed).trim_end_matches('/');
+    if matches_known_tab_suffix(path) {
+        path.to_string()
+    } else {
+        trimmed.trim_end_matches('/').to_string()
+    }
+}
+
+fn strip_query_fragment(value: &str) -> &str {
+    value.split(['?', '#']).next().unwrap_or(value)
+}
+
+fn matches_known_tab_suffix(value: &str) -> bool {
+    value.ends_with("/videos")
+        || value.ends_with("/streams")
+        || value.ends_with("/shorts")
+        || value.ends_with("/playlists")
+}
+
+fn strip_known_tab_suffix(path: &str) -> &str {
+    for suffix in ["/videos", "/streams", "/shorts", "/playlists"] {
+        if let Some(stripped) = path.strip_suffix(suffix) {
+            return stripped;
+        }
+    }
+    path
+}
+
+fn tab_matches_source(tab_url: &str, source_url: &str) -> bool {
+    let tab_path = strip_query_fragment(tab_url).trim_end_matches('/');
+    let source_path = strip_query_fragment(source_url).trim_end_matches('/');
+    if matches_known_tab_suffix(tab_path) || matches_known_tab_suffix(source_path) {
+        strip_known_tab_suffix(tab_path) == strip_known_tab_suffix(source_path)
+    } else {
+        normalize_tab_value(tab_url) == normalize_tab_value(source_url)
+    }
+}
+
+fn resolve_selected_tab(
+    existing: Option<&SourceMetadata>,
+    tabs: &[SourceListTabOption],
+) -> Option<String> {
+    let selected = existing.and_then(|m| m.list_tab.as_ref())?;
+    let selected_norm = normalize_tab_value(selected);
+    tabs.iter()
+        .find(|tab| normalize_tab_value(&tab.url) == selected_norm)
+        .map(|tab| tab.url.clone())
 }
 pub struct FetchSourceInfoWorker {
     pub ctx: AppContext,
@@ -135,21 +186,88 @@ impl BackgroundWorker<FetchSourceInfoWorkerArgs> for FetchSourceInfoWorker {
                 task = Some(active);
 
                 let existing_metadata = source.get_metadata();
+                let list_tabs = match probe_list_tabs(&source.url).await {
+                    Ok(tabs) => tabs,
+                    Err(err) => {
+                        // Tab probing is best-effort; preserve prior tabs on transient failures.
+                        warn!(error = %err, "failed to probe list tabs");
+                        existing_metadata
+                            .as_ref()
+                            .and_then(|m| m.list_tabs.clone())
+                            .unwrap_or_default()
+                    }
+                };
+                let has_tabs = !list_tabs.is_empty();
+                let url_tab_option = list_tabs
+                    .iter()
+                    .find(|tab| normalize_tab_value(&tab.url) == normalize_tab_value(&source.url))
+                    .map(|tab| tab.url.clone());
+                let source_url_matches_tab = url_tab_option.is_some();
+                let url_tab = url_tab_option;
+                // Only reuse a stored tab when it still matches the current source URL.
+                let stored_tab = existing_metadata
+                    .as_ref()
+                    .and_then(|m| m.list_tab.clone())
+                    .filter(|tab| tab_matches_source(tab, &source.url));
+                let selected_tab = if has_tabs {
+                    let resolved_tab = resolve_selected_tab(existing_metadata.as_ref(), &list_tabs);
+                    match (resolved_tab, url_tab.clone()) {
+                        (Some(stored), _) => Some(stored),
+                        (None, Some(url)) => Some(url),
+                        (None, None) => None,
+                    }
+                } else {
+                    stored_tab.clone()
+                };
+                // Avoid reusing cached counts/order when the effective tab changed.
+                let tab_changed = selected_tab.as_ref().map(|tab| normalize_tab_value(tab))
+                    != stored_tab.as_ref().map(|tab| normalize_tab_value(tab));
+                let list_tabs = if has_tabs { Some(list_tabs) } else { None };
+                let list_tab = if has_tabs {
+                    selected_tab.clone()
+                } else {
+                    stored_tab
+                };
+                let effective_url = match selected_tab.as_ref() {
+                    Some(selected)
+                        if source_url_matches_tab
+                            && normalize_tab_value(selected)
+                                == normalize_tab_value(&source.url) =>
+                    {
+                        // Preserve query/fragment for tabbed URLs while storing canonical tab.
+                        source.url.clone()
+                    }
+                    Some(selected) => selected.clone(),
+                    None => source.url.clone(),
+                };
                 let probe_mode = probe_mode_for(existing_metadata.as_ref());
                 // Delegate list detection to yt-dlp so all providers stay supported.
-                let probe = probe_list_metadata(&source.url, probe_mode)
+                let probe = probe_list_metadata(&effective_url, probe_mode)
                     .await
                     .map_err(|e| Error::string(&format!("Failed to probe source metadata: {e}")))?;
                 let list_kind = Some(probe.list_kind);
-                let list_count = probe
-                    .list_count
-                    .or_else(|| existing_metadata.as_ref().and_then(|m| m.list_count));
+                let mut list_count = probe.list_count.or_else(|| {
+                    if tab_changed {
+                        None
+                    } else {
+                        existing_metadata.as_ref().and_then(|m| m.list_count)
+                    }
+                });
+                if has_tabs && selected_tab.is_none() {
+                    // Tab containers report the number of tabs, not the number of videos.
+                    list_count = None;
+                }
                 // Once order is known, keep it stable across refreshes.
                 let list_order = probe.list_order.or_else(|| {
-                    existing_metadata
-                        .as_ref()
-                        .and_then(|m| m.list_order.clone())
+                    if tab_changed {
+                        None
+                    } else {
+                        existing_metadata
+                            .as_ref()
+                            .and_then(|m| m.list_order.clone())
+                    }
                 });
+                let order_known = list_order.is_some();
                 let uploader = probe
                     .uploader
                     .or_else(|| existing_metadata.as_ref().map(|m| m.uploader.clone()))
@@ -166,7 +284,14 @@ impl BackgroundWorker<FetchSourceInfoWorkerArgs> for FetchSourceInfoWorker {
                 let items = match list_kind {
                     Some(SourceListKind::Video) => 1,
                     Some(SourceListKind::List) => list_count
-                        .unwrap_or_else(|| existing_metadata.as_ref().map_or(0, |m| m.items)),
+                        .or_else(|| {
+                            if tab_changed || (has_tabs && selected_tab.is_none()) {
+                                Some(0)
+                            } else {
+                                existing_metadata.as_ref().map(|m| m.items)
+                            }
+                        })
+                        .unwrap_or(0),
                     None => existing_metadata.as_ref().map_or(0, |m| m.items),
                 };
 
@@ -177,6 +302,8 @@ impl BackgroundWorker<FetchSourceInfoWorkerArgs> for FetchSourceInfoWorker {
                     list_kind,
                     list_count,
                     list_order,
+                    list_tab,
+                    list_tabs,
                 };
 
                 let source_update = SourceActiveModel {
@@ -208,8 +335,9 @@ impl BackgroundWorker<FetchSourceInfoWorkerArgs> for FetchSourceInfoWorker {
                     source_metadata.list_kind.as_ref(),
                     source_metadata.list_order.as_ref(),
                 );
-                let mut media_stream = stream_media_list(&source.url, stream_order).await;
+                let mut media_stream = stream_media_list(&effective_url, stream_order).await;
                 let mut media_count = 0;
+                let mut saw_newer_item = false;
 
                 while let Some(item) = media_stream.recv().await {
                     let metadata = match item {
@@ -230,7 +358,14 @@ impl BackgroundWorker<FetchSourceInfoWorkerArgs> for FetchSourceInfoWorker {
                         "{}: Fetching media info for {}",
                         &source_metadata.uploader, &metadata.title
                     );
-                    if should_stop_early && metadata.timestamp < fetch_before_timestamp {
+                    if metadata.timestamp >= fetch_before_timestamp {
+                        saw_newer_item = true;
+                    }
+                    if should_stop_early
+                        && metadata.timestamp < fetch_before_timestamp
+                        && (order_known || saw_newer_item)
+                    {
+                        // For unknown order, avoid stopping before we see any recent items.
                         break;
                     }
 
