@@ -380,25 +380,31 @@ impl TaskManager {
         let now = Instant::now();
         {
             let mut metrics = self.metrics.write().unwrap();
+            let is_manual = trigger_task.is_none();
             for task_type in [TaskType::DownloadVideo, TaskType::RefreshIndex] {
                 if let Some(data) = metrics.get_mut(&task_type) {
                     data.restart.in_progress = false;
                     data.restart.last_completed = Some(now);
+                    let should_count = is_manual || trigger_task.as_ref() == Some(&task_type);
+                    match outcome {
+                        Ok(result) => {
+                            if should_count {
+                                data.restart.count += 1;
+                            }
+                            data.restart.last_outcome = Some(result.to_string());
+                            data.restart.last_error = None;
+                        }
+                        Err(err) => {
+                            data.restart.last_error = Some(err.to_string());
+                        }
+                    }
                 }
             }
 
             if let Some(task_type) = trigger_task {
                 if let Some(data) = metrics.get_mut(&task_type) {
-                    match outcome {
-                        Ok(result) => {
-                            data.restart.count += 1;
-                            data.restart.last_outcome = Some(result.to_string());
-                            data.restart.last_error = None;
-                            data.consecutive_failures = 0;
-                        }
-                        Err(err) => {
-                            data.restart.last_error = Some(err.to_string());
-                        }
+                    if outcome.is_ok() {
+                        data.consecutive_failures = 0;
                     }
                 }
             }

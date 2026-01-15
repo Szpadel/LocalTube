@@ -1,7 +1,7 @@
 {% if kind == "success" %}
-  <div class="text-sm text-green-700" role="status">{{ message }}</div>
+  <div class="text-sm text-green-700 dark:text-green-300" role="status">{{ message }}</div>
 {% elif kind == "warning" %}
-  <div class="text-sm text-orange-700" role="status">{{ message }}</div>
+  <div class="text-sm text-orange-700 dark:text-orange-300" role="status">{{ message }}</div>
 {% else %}
-  <div class="text-sm text-red-700" role="status">{{ message }}</div>
+  <div class="text-sm text-red-700 dark:text-red-300" role="status">{{ message }}</div>
 {% endif %}

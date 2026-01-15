@@ -4,6 +4,22 @@
 <head>
   <title>{% block title %}{% endblock title %}</title>
 
+  <script>
+    window.tailwind = window.tailwind || {};
+    window.tailwind.config = {
+      darkMode: 'class'
+    };
+  </script>
+  <script>
+    (function () {
+      const stored = localStorage.getItem('theme');
+      const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+      const theme = stored === 'light' || stored === 'dark' ? stored : (prefersDark ? 'dark' : 'light');
+      if (theme === 'dark') {
+        document.documentElement.classList.add('dark');
+      }
+    })();
+  </script>
   <script src="https://unpkg.com/htmx.org@2.0.0/dist/htmx.min.js"></script>
   <script src="https://cdn.tailwindcss.com?plugins=forms,typography,aspect-ratio,line-clamp"></script>
   {% block head %}
@@ -12,15 +28,21 @@
 </head>
 {% set hours_list = [1,2,3,4,6,12,24] %}
 
-<body class="bg-gray-50 text-gray-900 p-10">
-  <nav class="bg-white shadow mb-8 rounded-lg">
+<body class="bg-gray-50 text-gray-900 dark:bg-gray-950 dark:text-gray-100 p-10">
+  <nav class="bg-white dark:bg-gray-900 shadow mb-8 rounded-lg border border-transparent dark:border-gray-800">
     <div class="container mx-auto px-6 py-4">
       <div class="flex items-center justify-between">
         <div class="text-xl font-bold text-red-500">LocalTube</div>
-        <div class="flex space-x-8">
-          <a href="/sources" class="text-gray-700 hover:text-red-500">Sources</a>
-          <a href="/medias" class="text-gray-700 hover:text-red-500">Media Library</a>
-          <a href="/status" class="text-gray-700 hover:text-red-500">Status</a>
+        <div class="flex items-center space-x-6">
+          <a href="/sources" class="text-gray-700 dark:text-gray-200 hover:text-red-500">Sources</a>
+          <a href="/medias" class="text-gray-700 dark:text-gray-200 hover:text-red-500">Media Library</a>
+          <a href="/status" class="text-gray-700 dark:text-gray-200 hover:text-red-500">Status</a>
+          <button id="theme-toggle" class="text-gray-500 dark:text-gray-300 hover:text-red-500" type="button" aria-label="Toggle theme">
+            <svg id="theme-toggle-icon" xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+              <path d="M10 3a1 1 0 011 1v1a1 1 0 11-2 0V4a1 1 0 011-1zm0 11a1 1 0 011 1v1a1 1 0 11-2 0v-1a1 1 0 011-1zm7-4a1 1 0 01-1 1h-1a1 1 0 110-2h1a1 1 0 011 1zM5 10a1 1 0 01-1 1H3a1 1 0 110-2h1a1 1 0 011 1zm9.071-4.071a1 1 0 010 1.414l-.707.707a1 1 0 11-1.414-1.414l.707-.707a1 1 0 011.414 0zM7.05 12.95a1 1 0 010 1.414l-.707.707A1 1 0 014.93 13.657l.707-.707a1 1 0 011.414 0zm7.021 1.414a1 1 0 01-1.414 0l-.707-.707a1 1 0 011.414-1.414l.707.707a1 1 0 010 1.414zM7.05 7.05a1 1 0 01-1.414 0l-.707-.707A1 1 0 015.343 4.93l.707.707a1 1 0 010 1.414z" />
+              <path d="M10 6a4 4 0 100 8 4 4 0 000-8z" />
+            </svg>
+          </button>
         </div>
       </div>
     </div>
@@ -32,10 +54,10 @@
   </div>
 
   <!-- Task Status Component -->
-  <div id="task-status" class="fixed bottom-4 right-4 bg-white rounded-lg shadow-lg p-4 w-80 z-50" data-collapsed="false">
+  <div id="task-status" class="fixed bottom-4 right-4 bg-white dark:bg-gray-900 rounded-lg shadow-lg p-4 w-80 z-50 border border-transparent dark:border-gray-800" data-collapsed="false">
     <div class="flex justify-between items-center mb-2">
       <h3 class="font-semibold">Background Tasks</h3>
-      <button id="task-status-toggle" class="text-gray-500 hover:text-gray-700 focus:outline-none">
+      <button id="task-status-toggle" class="text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 focus:outline-none">
         <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
           <path fill-rule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clip-rule="evenodd" />
         </svg>
@@ -44,7 +66,7 @@
 
     <!-- Collapsed Summary View -->
     <div id="task-status-collapsed" class="hidden">
-      <div id="task-summary" class="text-xs text-gray-600 font-medium mb-1">
+      <div id="task-summary" class="text-xs text-gray-600 dark:text-gray-300 font-medium mb-1">
         <!-- Task counts will be inserted here -->
       </div>
       <div id="task-preview" class="text-xs">
@@ -53,10 +75,10 @@
     </div>
 
     <!-- Expanded Detailed View -->
-    <div id="task-status-expanded" class="divide-y divide-gray-200 max-h-96 overflow-y-auto">
+    <div id="task-status-expanded" class="divide-y divide-gray-200 dark:divide-gray-800 max-h-96 overflow-y-auto">
       <div id="task-list" class="space-y-2">
         <div class="py-2 task-item">
-          <p class="text-gray-600">System is idle</p>
+          <p class="text-gray-600 dark:text-gray-300">System is idle</p>
         </div>
       </div>
     </div>
@@ -97,6 +119,56 @@
       const taskStatus = document.getElementById('task-status');
       const taskStatusCollapsed = document.getElementById('task-status-collapsed');
       const taskStatusExpanded = document.getElementById('task-status-expanded');
+      const themeToggle = document.getElementById('theme-toggle');
+      const themeToggleIcon = document.getElementById('theme-toggle-icon');
+      const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
+
+      function currentTheme() {
+        const stored = localStorage.getItem('theme');
+        if (stored === 'light' || stored === 'dark') {
+          return stored;
+        }
+        return mediaQuery.matches ? 'dark' : 'light';
+      }
+
+      function renderThemeIcon(theme) {
+        if (!themeToggleIcon) {
+          return;
+        }
+        if (theme === 'dark') {
+          themeToggleIcon.innerHTML = '<path d="M17.293 13.293a8 8 0 01-10.586-10.586A8.001 8.001 0 1017.293 13.293z" />';
+        } else {
+          themeToggleIcon.innerHTML = '<path d="M10 3a1 1 0 011 1v1a1 1 0 11-2 0V4a1 1 0 011-1zm0 11a1 1 0 011 1v1a1 1 0 11-2 0v-1a1 1 0 011-1zm7-4a1 1 0 01-1 1h-1a1 1 0 110-2h1a1 1 0 011 1zM5 10a1 1 0 01-1 1H3a1 1 0 110-2h1a1 1 0 011 1zm9.071-4.071a1 1 0 010 1.414l-.707.707a1 1 0 11-1.414-1.414l.707-.707a1 1 0 011.414 0zM7.05 12.95a1 1 0 010 1.414l-.707.707A1 1 0 014.93 13.657l.707-.707a1 1 0 011.414 0zm7.021 1.414a1 1 0 01-1.414 0l-.707-.707a1 1 0 011.414-1.414l.707.707a1 1 0 010 1.414zM7.05 7.05a1 1 0 01-1.414 0l-.707-.707A1 1 0 015.343 4.93l.707.707a1 1 0 010 1.414z" /><path d="M10 6a4 4 0 100 8 4 4 0 000-8z" />';
+        }
+      }
+
+      function applyTheme(theme) {
+        if (theme === 'dark') {
+          document.documentElement.classList.add('dark');
+        } else {
+          document.documentElement.classList.remove('dark');
+        }
+        renderThemeIcon(theme);
+      }
+
+      applyTheme(currentTheme());
+
+      if (themeToggle) {
+        themeToggle.addEventListener('click', function() {
+          const next = currentTheme() === 'dark' ? 'light' : 'dark';
+          localStorage.setItem('theme', next);
+          applyTheme(next);
+        });
+      }
+
+      if (mediaQuery && mediaQuery.addEventListener) {
+        mediaQuery.addEventListener('change', function(event) {
+          const stored = localStorage.getItem('theme');
+          if (stored !== 'light' && stored !== 'dark') {
+            applyTheme(event.matches ? 'dark' : 'light');
+          }
+        });
+      }
 
       // Toggle task status visibility
       taskStatusToggle.addEventListener('click', function() {
@@ -159,7 +231,7 @@
 
           // Show a connected message in the task list
           const taskItem = document.createElement('div');
-          taskItem.className = 'py-2 task-item text-green-600';
+          taskItem.className = 'py-2 task-item text-green-600 dark:text-green-300';
           taskItem.innerHTML = `<p>WebSocket connected</p>`;
           taskList.innerHTML = '';
           taskList.appendChild(taskItem);
@@ -187,7 +259,7 @@
           console.error('WebSocket error:', error);
           // Show error in UI
           const errorItem = document.createElement('div');
-          errorItem.className = 'py-2 task-item text-red-600';
+          errorItem.className = 'py-2 task-item text-red-600 dark:text-red-300';
           errorItem.innerHTML = `<p>WebSocket error - check console</p>`;
           taskList.innerHTML = '';
           taskList.appendChild(errorItem);
@@ -202,7 +274,7 @@
             console.log(`Attempting to reconnect in ${delay}ms (attempt ${reconnectAttempts}/${maxReconnectAttempts})`);
 
             const reconnectItem = document.createElement('div');
-            reconnectItem.className = 'py-2 task-item text-orange-600';
+            reconnectItem.className = 'py-2 task-item text-orange-600 dark:text-orange-300';
             reconnectItem.innerHTML = `<p>Reconnecting (${reconnectAttempts}/${maxReconnectAttempts})...</p>`;
             taskList.innerHTML = '';
             taskList.appendChild(reconnectItem);
@@ -210,7 +282,7 @@
             setTimeout(connectWebSocket, delay);
           } else {
             const failedItem = document.createElement('div');
-            failedItem.className = 'py-2 task-item text-red-600';
+            failedItem.className = 'py-2 task-item text-red-600 dark:text-red-300';
             failedItem.innerHTML = `<p>Failed to connect after ${maxReconnectAttempts} attempts</p>`;
             taskList.innerHTML = '';
             taskList.appendChild(failedItem);
@@ -229,7 +301,7 @@
         let errorMessage = null;
 
         if (typeof task.state === 'object' && task.state.Failed) {
-          statusClass = 'border-l-4 border-red-500 pl-2 bg-red-50';
+          statusClass = 'border-l-4 border-red-500 pl-2 bg-red-50 dark:bg-red-950/30';
           statusIcon = `
             <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-red-500" viewBox="0 0 20 20" fill="currentColor">
               <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clip-rule="evenodd" />
@@ -237,21 +309,21 @@
           statusLabel = "Failed";
           errorMessage = task.state.Failed;
         } else if (task.state === 'Completed') {
-          statusClass = 'border-l-4 border-green-500 pl-2 bg-green-50';
+          statusClass = 'border-l-4 border-green-500 pl-2 bg-green-50 dark:bg-green-950/30';
           statusIcon = `
             <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-green-500" viewBox="0 0 20 20" fill="currentColor">
               <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" />
             </svg>`;
           statusLabel = "Completed";
         } else if (task.state === 'InProgress') {
-          statusClass = 'border-l-4 border-blue-500 pl-2 bg-blue-50';
+          statusClass = 'border-l-4 border-blue-500 pl-2 bg-blue-50 dark:bg-blue-950/30';
           statusIcon = `
             <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-blue-500" viewBox="0 0 20 20" fill="currentColor">
               <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z" clip-rule="evenodd" />
             </svg>`;
           statusLabel = "In Progress";
         } else if (task.state === 'Queued') {
-          statusClass = 'border-l-4 border-yellow-500 pl-2 bg-yellow-50';
+          statusClass = 'border-l-4 border-yellow-500 pl-2 bg-yellow-50 dark:bg-yellow-950/30';
           statusIcon = `
             <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-yellow-500" viewBox="0 0 20 20" fill="currentColor">
               <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z" clip-rule="evenodd" />
@@ -295,11 +367,11 @@
         errorContainer.className = 'mt-2';
 
         const errorTextDiv = document.createElement('div');
-        errorTextDiv.className = 'max-h-32 overflow-y-auto text-xs text-red-500 bg-red-50 p-2 rounded';
+        errorTextDiv.className = 'max-h-32 overflow-y-auto text-xs text-red-500 dark:text-red-300 bg-red-50 dark:bg-red-950/30 p-2 rounded';
         errorTextDiv.textContent = errorMessage;
 
         const copyButton = document.createElement('button');
-        copyButton.className = 'mt-1 text-xs text-red-700 hover:text-red-900 underline focus:outline-none';
+        copyButton.className = 'mt-1 text-xs text-red-700 dark:text-red-300 hover:text-red-900 dark:hover:text-red-200 underline focus:outline-none';
         copyButton.textContent = 'Copy Error';
         copyButton.dataset.copyError = errorMessage;
         copyButton.dataset.taskId = taskId;
@@ -331,7 +403,7 @@
           const taskTypeLabel = inProgressTask.task_type === 'DownloadVideo' ? '📥' : '🔄';
 
           const previewDiv = document.createElement('div');
-          previewDiv.className = 'flex items-center text-gray-700 bg-blue-50 p-2 rounded mt-1';
+          previewDiv.className = 'flex items-center text-gray-700 dark:text-gray-200 bg-blue-50 dark:bg-blue-950/30 p-2 rounded mt-1';
 
           const iconDiv = document.createElement('div');
           iconDiv.className = 'mr-2 flex-shrink-0';
@@ -347,7 +419,7 @@
           taskPreviewEl.innerHTML = '';
           taskPreviewEl.appendChild(previewDiv);
         } else {
-          taskPreviewEl.innerHTML = '<p class="text-gray-500 mt-1">No active tasks</p>';
+          taskPreviewEl.innerHTML = '<p class="text-gray-500 dark:text-gray-400 mt-1">No active tasks</p>';
         }
       }
 
@@ -359,7 +431,7 @@
           const idleItem = document.createElement('div');
           idleItem.className = 'py-2 task-item';
           const idleText = document.createElement('p');
-          idleText.className = 'text-gray-600';
+          idleText.className = 'text-gray-600 dark:text-gray-300';
           idleText.textContent = 'System is idle';
           idleItem.appendChild(idleText);
           taskList.appendChild(idleItem);
@@ -370,28 +442,16 @@
 
         // Add summary header
         const summaryDiv = document.createElement('div');
-        summaryDiv.className = 'pb-2 mb-2 border-b border-gray-200';
+        summaryDiv.className = 'pb-2 mb-2 border-b border-gray-200 dark:border-gray-800';
         const summaryText = document.createElement('p');
-        summaryText.className = 'text-xs text-gray-600 font-medium';
+        summaryText.className = 'text-xs text-gray-600 dark:text-gray-300 font-medium';
         summaryText.textContent = formatTaskSummary(counts);
         summaryDiv.appendChild(summaryText);
         taskList.appendChild(summaryDiv);
 
-        // Group tasks by state
-        const queuedTasks = tasks.filter(t => t.state === 'Queued');
-        const inProgressTasks = tasks.filter(t => t.state === 'InProgress');
-        const completedTasks = tasks.filter(t => t.state === 'Completed');
-        const failedTasks = tasks.filter(t => typeof t.state === 'object' && t.state.Failed);
+        const orderedTasks = orderTasks(tasks);
 
-        // Render tasks by group
-        const allGroupedTasks = [
-          ...queuedTasks,
-          ...inProgressTasks,
-          ...completedTasks.slice(0, 5),
-          ...failedTasks
-        ];
-
-        allGroupedTasks.forEach(task => {
+        orderedTasks.forEach(task => {
           const { statusClass, statusIcon, statusLabel, errorMessage } = getTaskStateInfo(task);
 
           const taskItem = document.createElement('div');
@@ -419,13 +479,13 @@
           const statusBadge = document.createElement('span');
           let badgeClasses = 'text-xs px-2 py-0.5 rounded-full ';
           if (task.state === 'Queued') {
-            badgeClasses += 'bg-yellow-100 text-yellow-800';
+            badgeClasses += 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/40 dark:text-yellow-200';
           } else if (task.state === 'InProgress') {
-            badgeClasses += 'bg-blue-100 text-blue-800';
+            badgeClasses += 'bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-200';
           } else if (task.state === 'Completed') {
-            badgeClasses += 'bg-green-100 text-green-800';
+            badgeClasses += 'bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-200';
           } else if (typeof task.state === 'object' && task.state.Failed) {
-            badgeClasses += 'bg-red-100 text-red-800';
+            badgeClasses += 'bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-200';
           }
           statusBadge.className = badgeClasses;
           statusBadge.textContent = statusLabel;
@@ -433,13 +493,13 @@
           const titleEl = document.createElement('p');
           let titleClasses = 'text-sm ';
           if (task.state === 'Queued') {
-            titleClasses += 'text-yellow-600';
+            titleClasses += 'text-yellow-600 dark:text-yellow-300';
           } else if (task.state === 'InProgress') {
-            titleClasses += 'text-blue-600';
+            titleClasses += 'text-blue-600 dark:text-blue-300';
           } else if (task.state === 'Completed') {
-            titleClasses += 'text-green-600';
+            titleClasses += 'text-green-600 dark:text-green-300';
           } else if (typeof task.state === 'object' && task.state.Failed) {
-            titleClasses += 'text-red-600';
+            titleClasses += 'text-red-600 dark:text-red-300';
           }
           titleEl.className = titleClasses;
           titleEl.textContent = task.title;
@@ -453,7 +513,7 @@
           // Add status message if available
           if (task.status && task.state !== 'Completed' && !(typeof task.state === 'object' && task.state.Failed)) {
             const statusEl = document.createElement('p');
-            statusEl.className = 'text-xs text-gray-500 mt-1';
+            statusEl.className = 'text-xs text-gray-500 dark:text-gray-400 mt-1';
             statusEl.textContent = task.status;
             contentDiv.appendChild(statusEl);
           }
@@ -469,6 +529,8 @@
           taskItem.appendChild(containerDiv);
           taskList.appendChild(taskItem);
         });
+
+        taskList.scrollTop = 0;
       }
 
       // Update the task list in the UI
@@ -486,6 +548,19 @@
         }
       }
 
+      function orderTasks(tasks) {
+        const inProgressTasks = tasks.filter(t => t.state === 'InProgress');
+        const queuedTasks = tasks.filter(t => t.state === 'Queued');
+        const failedTasks = tasks.filter(t => typeof t.state === 'object' && t.state.Failed);
+        const completedTasks = tasks.filter(t => t.state === 'Completed');
+        return [
+          ...inProgressTasks,
+          ...queuedTasks,
+          ...failedTasks,
+          ...completedTasks.slice(0, 5)
+        ];
+      }
+
       // Event delegation for copy error buttons
       taskList.addEventListener('click', function(event) {
         if (event.target.dataset.copyError) {
@@ -495,13 +570,13 @@
             // Show "Copied!" confirmation
             const originalText = event.target.textContent;
             event.target.textContent = 'Copied!';
-            event.target.classList.add('text-green-700');
-            event.target.classList.remove('text-red-700');
+            event.target.classList.add('text-green-700', 'dark:text-green-300');
+            event.target.classList.remove('text-red-700', 'dark:text-red-300');
 
             setTimeout(function() {
               event.target.textContent = originalText;
-              event.target.classList.remove('text-green-700');
-              event.target.classList.add('text-red-700');
+              event.target.classList.remove('text-green-700', 'dark:text-green-300');
+              event.target.classList.add('text-red-700', 'dark:text-red-300');
             }, 2000);
           }).catch(function(err) {
             console.error('Failed to copy error message:', err);

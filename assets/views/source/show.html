@@ -1,55 +1,63 @@
 {% extends "base.html" %}
 
 {% block title %}
-View Source: {{ item.id }}
+View Source: {% if item.metadata %}{{ item.metadata.uploader }}{% else %}{{ item.url }}{% endif %}
 {% endblock title %}
 
 {% block content %}
-<h1 class="text-3xl font-bold text-red-500 mb-6">
+<h1 class="text-3xl font-bold text-red-500 dark:text-red-400 mb-6">
     {% if item.metadata %}
         {{ item.metadata.uploader }}
     {% else %}
         {{ item.url }}
     {% endif %}
 </h1>
-<div class="bg-white rounded-lg shadow p-6 mb-10">
+<div class="bg-white dark:bg-gray-900 rounded-lg shadow p-6 mb-10 border border-transparent dark:border-gray-800">
     {% if item.metadata %}
         {% if item.metadata.list_tabs and (not item.metadata.list_tab or (item.metadata.list_tab and item.metadata.list_count is undefined and item.metadata.items == 0)) %}
-            <p class="mb-4"><span class="font-bold">Video Count:</span> unknown (select tab)</p>
+            <p class="mb-4 text-gray-700 dark:text-gray-200"><span class="font-bold">Video Count:</span> unknown (select tab)</p>
         {% else %}
-            <p class="mb-4"><span class="font-bold">Video Count:</span> {{ item.metadata.items }}</p>
+            <p class="mb-4 text-gray-700 dark:text-gray-200"><span class="font-bold">Video Count:</span> {{ item.metadata.items }}</p>
         {% endif %}
-        <p class="mb-4"><span class="font-bold">Source Provider:</span> {{ item.metadata.source_provider }}</p>
-        <p class="mb-4">
+        <p class="mb-4 text-gray-700 dark:text-gray-200"><span class="font-bold">Source Provider:</span> {{ item.metadata.source_provider }}</p>
+        <p class="mb-4 text-gray-700 dark:text-gray-200">
             <span class="font-bold">List Kind:</span>
             {% if item.metadata.list_kind %}{{ item.metadata.list_kind }}{% else %}unknown{% endif %}
         </p>
-        <p class="mb-4">
+        <p class="mb-4 text-gray-700 dark:text-gray-200">
             <span class="font-bold">List Count:</span>
             {% if item.metadata.list_count %}{{ item.metadata.list_count }}{% else %}unknown{% endif %}
         </p>
-        <p class="mb-4">
+        <p class="mb-4 text-gray-700 dark:text-gray-200">
             <span class="font-bold">List Order:</span>
             {% if item.metadata.list_order %}{{ item.metadata.list_order }}{% else %}unknown{% endif %}
         </p>
         {% if item.metadata.list_tabs %}
-        <p class="mb-4">
+        <p class="mb-4 text-gray-700 dark:text-gray-200">
             <span class="font-bold">Selected Tab:</span>
             {% if item.metadata.list_tab %}{{ item.metadata.list_tab }}{% else %}default{% endif %}
         </p>
         {% endif %}
     {% endif %}
-    <p class="mb-4"><span class="font-bold">URL:</span> {{ item.url }}</p>
-    <p class="mb-4"><span class="font-bold">Fetch Last Days:</span> {{ item.fetch_last_days }}</p>
     <p class="mb-4">
+        <span class="font-bold">URL:</span>
+        <a href="{{ item.url }}" class="text-red-500 hover:underline break-all" target="_blank" rel="noreferrer">
+            {{ item.url }}
+        </a>
+    </p>
+    <p class="mb-4 text-gray-700 dark:text-gray-200"><span class="font-bold">Fetch Last Days:</span> {{ item.fetch_last_days }}</p>
+    <p class="mb-4 text-gray-700 dark:text-gray-200">
         <span class="font-bold">Sponsorblock Categories:</span>
         {% for category in item.sponsorblock | split(pat=",") %}
         {% if category %}
-            <span class="inline-block bg-red-100 text-red-800 px-2 py-1 rounded mr-2">{{ category }}</span>
+            <span class="inline-block bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-200 px-2 py-1 rounded mr-2">{{ category }}</span>
         {% endif %}
         {% endfor %}
     </p>
-    <p class="mb-4"><span class="font-bold">Refresh Frequency:</span> {{ item.refresh_frequency }}</p>
-    <a href="/sources" class="text-red-500 hover:underline">Back to Sources</a>
+    <p class="mb-4 text-gray-700 dark:text-gray-200"><span class="font-bold">Refresh Frequency:</span> {{ item.refresh_frequency }}</p>
+    <div class="flex space-x-4">
+        <a href="/sources/{{ item.id }}/edit" class="text-red-500 hover:underline">Edit</a>
+        <a href="/sources" class="text-red-500 hover:underline">Back to Sources</a>
+    </div>
 </div>
 {% endblock content %}

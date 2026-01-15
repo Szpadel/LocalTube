@@ -5,16 +5,27 @@
 {% endblock title %}
 
 {% block content %}
-<h1 class="text-3xl font-bold text-red-500 mb-6">
+<h1 class="text-3xl font-bold text-red-500 dark:text-red-400 mb-6">
     {% if item.metadata %}{{ item.metadata.title }}{% else %}Media Details{% endif %}
 </h1>
-<div class="bg-white rounded-lg shadow p-6 mb-10">
+<div class="bg-white dark:bg-gray-900 rounded-lg shadow p-6 mb-10 border border-transparent dark:border-gray-800">
+    {% if item.media_path %}
+        <div class="mb-6">
+            <video class="w-full rounded-lg border border-gray-200 dark:border-gray-800" controls preload="metadata">
+                <source src="/medias/{{ item.id }}/stream">
+                Your browser does not support the video tag.
+            </video>
+            <p class="text-xs text-gray-500 dark:text-gray-400 mt-2">
+                Previewing the local file. <a href="/medias/{{ item.id }}/stream" class="text-red-500 dark:text-red-400 hover:underline">Open directly</a>
+            </p>
+        </div>
+    {% endif %}
     {% if item.metadata %}
         {% set video = item.metadata %}
         <div class="grid grid-cols-1 gap-4">
-            <p class="mb-2"><span class="font-bold">Uploader:</span>
+            <p class="mb-2 text-gray-700 dark:text-gray-200"><span class="font-bold">Uploader:</span>
                 {% if source and source.metadata %}
-                    <a href="/sources/{{ source.id }}" class="text-red-500 hover:underline">
+                    <a href="/sources/{{ source.id }}" class="text-red-500 dark:text-red-400 hover:underline">
                         {{ source.metadata.uploader }}
                     </a>
                 {% else %}
@@ -23,31 +34,34 @@
             </p>
             {% if video.description %}
                 <div class="mb-4">
-                    <span class="font-bold">Description:</span>
-                    <p class="mt-2 text-gray-600 whitespace-pre-line">{{ video.description }}</p>
+                    <span class="font-bold text-gray-700 dark:text-gray-200">Description:</span>
+                    <p class="mt-2 text-gray-600 dark:text-gray-400 whitespace-pre-line">{{ video.description }}</p>
                 </div>
             {% endif %}
-            <p class="mb-2"><span class="font-bold">Duration:</span> {{ video.duration / 60 | round }}m</p>
-            <p class="mb-2"><span class="font-bold">Platform:</span> {{ video.extractor_key }}</p>
-            <p class="mb-2"><span class="font-bold">Original URL:</span> <a href="{{ video.original_url }}" class="text-red-500 hover:underline" target="_blank">{{ video.original_url }}</a></p>
-            <p class="mb-4"><span class="font-bold">Added:</span> {{ video.timestamp | date(format="%Y-%m-%d %H:%M:%S") }}</p>
+            <p class="mb-2 text-gray-700 dark:text-gray-200"><span class="font-bold">Duration:</span> {{ video.duration / 60 | round }}m</p>
+            <p class="mb-2 text-gray-700 dark:text-gray-200"><span class="font-bold">Platform:</span> {{ video.extractor_key }}</p>
+            <p class="mb-2 text-gray-700 dark:text-gray-200">
+                <span class="font-bold">Original URL:</span>
+                <a href="{{ video.original_url }}" class="text-red-500 dark:text-red-400 hover:underline break-all" target="_blank" rel="noreferrer">{{ video.original_url }}</a>
+            </p>
+            <p class="mb-4 text-gray-700 dark:text-gray-200"><span class="font-bold">Added:</span> {{ video.timestamp | date(format="%Y-%m-%d %H:%M:%S") }}</p>
         </div>
     {% else %}
-        <p class="text-gray-500">Metadata not available</p>
+        <p class="text-gray-500 dark:text-gray-400">Metadata not available</p>
     {% endif %}
     {% if item.media_path %}
-        <p class="mb-4"><span class="font-bold">Local Path:</span> {{ item.media_path }}</p>
+        <p class="mb-4 text-gray-700 dark:text-gray-200 break-all"><span class="font-bold">Local Path:</span> {{ item.media_path }}</p>
     {% endif %}
     <div class="mt-6">
-        <a href="/medias/{{ item.id }}/edit" class="text-red-500 hover:underline mr-4">Edit</a>
+        <a href="/medias/{{ item.id }}/edit" class="text-red-500 dark:text-red-400 hover:underline mr-4">Edit</a>
         <form method="post" action="/medias/{{ item.id }}/redownload" class="inline mr-4">
             <button type="submit"
-                    class="text-red-500 hover:underline cursor-pointer bg-transparent border-none p-0 font-inherit"
+                    class="text-red-500 dark:text-red-400 hover:underline cursor-pointer bg-transparent border-none p-0 font-inherit"
                     onclick="return confirm('Are you sure you want to redownload this media? This will delete the current file and download it again.')">
                 Redownload
             </button>
         </form>
-        <a href="/medias" class="text-red-500 hover:underline">Back to Media Library</a>
+        <a href="/medias" class="text-red-500 dark:text-red-400 hover:underline">Back to Media Library</a>
     </div>
 </div>
 {% endblock content %}

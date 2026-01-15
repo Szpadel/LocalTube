@@ -12,12 +12,12 @@
 ] %}
 
 <div class="mb-4">
-    <label class="block font-bold mb-2">Sponsorblock Categories</label>
+    <label class="block font-bold mb-2 text-gray-700 dark:text-gray-200">Sponsorblock Categories</label>
     <div class="grid grid-cols-2 gap-4">
         {% set sponsorblock_list = sponsorblock | split(pat=",") %}
         {% for category_str in sponsorblock_categories %}
             {% set category = category_str | split(pat="|") %}
-            <label class="flex items-center">
+            <label class="flex items-center text-gray-700 dark:text-gray-200">
                 <input type="checkbox"
                        name="sponsorblock_{{ category.0 }}"
                        class="sponsorblock-category mr-2"

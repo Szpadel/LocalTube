@@ -10,21 +10,21 @@ Edit Source: {% if item.metadata %}
 {% endblock title %}
 
 {% block content %}
-<h1 class="text-3xl font-bold text-red-500 mb-6">Edit Source:{% if item.metadata %}
+<h1 class="text-3xl font-bold text-red-500 dark:text-red-400 mb-6">Edit Source: {% if item.metadata %}
 {{ item.metadata.uploader }}
 {% else %}
 {{ item.url }}
 {% endif %}</h1>
-<div class="bg-white rounded-lg shadow p-6 mb-10">
+<div class="bg-white dark:bg-gray-900 rounded-lg shadow p-6 mb-10 border border-transparent dark:border-gray-800">
     <form hx-post="/sources/{{ item.id }}" hx-ext="submitjson" hx-target="#success-message">
         <div class="mb-4">
-            <label class="block font-bold mb-2">Fetch Last Days</label>
-            <input id="fetch_last_days" name="fetch_last_days" type="number" required value="{{ item.fetch_last_days }}" class="border border-gray-300 rounded w-full py-2 px-3">
+            <label class="block font-bold mb-2 text-gray-700 dark:text-gray-200">Fetch Last Days</label>
+            <input id="fetch_last_days" name="fetch_last_days" type="number" required value="{{ item.fetch_last_days }}" class="border border-gray-300 dark:border-gray-700 rounded w-full py-2 px-3 bg-white dark:bg-gray-950 text-gray-900 dark:text-gray-100">
         </div>
         {{ shared::sponsorblock_checkboxes(sponsorblock=item.sponsorblock) }}
         <div class="mb-4">
-            <label class="block font-bold mb-2">Refresh Frequency</label>
-            <select id="refresh_frequency" name="refresh_frequency" required class="border border-gray-300 rounded w-full py-2 px-3">
+            <label class="block font-bold mb-2 text-gray-700 dark:text-gray-200">Refresh Frequency</label>
+            <select id="refresh_frequency" name="refresh_frequency" required class="border border-gray-300 dark:border-gray-700 rounded w-full py-2 px-3 bg-white dark:bg-gray-950 text-gray-900 dark:text-gray-100">
                 {% for hour in hours_list %}
                     <option value="{{ hour }}" {% if item.refresh_frequency == hour %}selected{% endif %}>{{ hour }}h</option>
                 {% endfor %}
@@ -32,14 +32,14 @@ Edit Source: {% if item.metadata %}
         </div>
         {% if item.metadata and item.metadata.list_tabs %}
         <div class="mb-4">
-            <label class="block font-bold mb-2">Content Tab</label>
-            <select id="list_tab" name="list_tab" class="border border-gray-300 rounded w-full py-2 px-3">
+            <label class="block font-bold mb-2 text-gray-700 dark:text-gray-200">Content Tab</label>
+            <select id="list_tab" name="list_tab" class="border border-gray-300 dark:border-gray-700 rounded w-full py-2 px-3 bg-white dark:bg-gray-950 text-gray-900 dark:text-gray-100">
                 <option value="auto" {% if not item.metadata.list_tab %}selected{% endif %}>Default (auto)</option>
                 {% for tab in item.metadata.list_tabs %}
                     <option value="{{ tab.url }}" {% if item.metadata.list_tab and tab.url == item.metadata.list_tab %}selected{% endif %}>{{ tab.label }}</option>
                 {% endfor %}
             </select>
-            <p class="text-xs text-gray-500 mt-1">Choosing a tab changes which items are fetched.</p>
+            <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">Choosing a tab changes which items are fetched.</p>
         </div>
         {% endif %}
         <div class="flex space-x-4">
@@ -48,7 +48,7 @@ Edit Source: {% if item.metadata %}
         </div>
     </form>
     <div id="success-message" class="mt-4"></div>
-    <a href="/sources" class="text-red-500 hover:underline">Back to Sources</a>
+    <a href="/sources" class="text-red-500 dark:text-red-400 hover:underline">Back to Sources</a>
 </div>
 {% endblock content %}
 

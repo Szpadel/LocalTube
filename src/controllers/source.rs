@@ -108,7 +108,9 @@ pub async fn update(
     let item = item.update(&ctx.db).await?;
     FetchSourceInfoWorker::perform_later(&ctx, FetchSourceInfoWorkerArgs { source_id: item.id })
         .await?;
-    format::json(item)
+    format::html(
+        "<div class=\"text-sm text-green-600 dark:text-green-400\">Saved. Refresh queued.</div>",
+    )
 }
 
 #[debug_handler]

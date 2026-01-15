@@ -6,21 +6,21 @@ Create Source
 {% endblock title %}
 
 {% block content %}
-<h1 class="text-3xl font-bold text-red-500 mb-6">Create New Source</h1>
-<div class="bg-white rounded-lg shadow p-6 mb-10">
+<h1 class="text-3xl font-bold text-red-500 dark:text-red-400 mb-6">Create New Source</h1>
+<div class="bg-white dark:bg-gray-900 rounded-lg shadow p-6 mb-10 border border-transparent dark:border-gray-800">
     <form hx-post="/sources" hx-ext="submitjson">
         <div class="mb-4">
-            <label class="block font-bold mb-2">URL</label>
-            <input id="url" name="url" type="text" value="" required class="border border-gray-300 rounded w-full py-2 px-3">
+            <label class="block font-bold mb-2 text-gray-700 dark:text-gray-200">URL</label>
+            <input id="url" name="url" type="text" value="" required class="border border-gray-300 dark:border-gray-700 rounded w-full py-2 px-3 bg-white dark:bg-gray-950 text-gray-900 dark:text-gray-100">
         </div>
         <div class="mb-4">
-            <label class="block font-bold mb-2">Fetch Last Days</label>
-            <input id="fetch_last_days" name="fetch_last_days" type="number" required class="border border-gray-300 rounded w-full py-2 px-3">
+            <label class="block font-bold mb-2 text-gray-700 dark:text-gray-200">Fetch Last Days</label>
+            <input id="fetch_last_days" name="fetch_last_days" type="number" required class="border border-gray-300 dark:border-gray-700 rounded w-full py-2 px-3 bg-white dark:bg-gray-950 text-gray-900 dark:text-gray-100">
         </div>
         {{ shared::sponsorblock_checkboxes(sponsorblock="") }}
         <div class="mb-4">
-            <label class="block font-bold mb-2">Refresh Frequency</label>
-            <select id="refresh_frequency" name="refresh_frequency" required class="border border-gray-300 rounded w-full py-2 px-3">
+            <label class="block font-bold mb-2 text-gray-700 dark:text-gray-200">Refresh Frequency</label>
+            <select id="refresh_frequency" name="refresh_frequency" required class="border border-gray-300 dark:border-gray-700 rounded w-full py-2 px-3 bg-white dark:bg-gray-950 text-gray-900 dark:text-gray-100">
                 {% for hour in hours_list %}
                     <option value="{{ hour }}" {% if hour == 4 %}selected{% endif %}>{{ hour }}h</option>
                 {% endfor %}

@@ -1,9 +1,12 @@
 #![allow(clippy::missing_errors_doc)]
 #![allow(clippy::unnecessary_struct_initialization)]
 #![allow(clippy::unused_async)]
-use axum::{debug_handler, response::Redirect};
+use axum::{body::Bytes, debug_handler, http::header, response::Redirect};
+use futures_util::stream;
 use loco_rs::prelude::*;
 use sea_orm::{sea_query::Order, EntityTrait, QueryOrder, Set};
+use std::path::Component;
+use tokio::io::AsyncReadExt;
 
 use crate::{
     models::_entities::medias::{ActiveModel, Column, Entity, Model},
@@ -49,6 +52,70 @@ pub async fn show(
     views::media::show(&v, &item, source.as_ref())
 }
 
+fn content_type_for(path: &std::path::Path) -> &'static str {
+    let ext = path
+        .extension()
+        .and_then(|s| s.to_str())
+        .map(str::to_ascii_lowercase);
+    match ext.as_deref() {
+        Some("mp4") => "video/mp4",
+        Some("webm") => "video/webm",
+        Some("mkv") => "video/x-matroska",
+        Some("mov") => "video/quicktime",
+        Some("avi") => "video/x-msvideo",
+        _ => "application/octet-stream",
+    }
+}
+
+#[debug_handler]
+pub async fn stream(Path(id): Path<i32>, State(ctx): State<AppContext>) -> Result<Response> {
+    let (item, _) = load_item(&ctx, id).await?;
+    let Some(media_path) = item.media_path else {
+        return Err(Error::NotFound);
+    };
+
+    let rel_path = std::path::PathBuf::from(media_path);
+    if rel_path.is_absolute()
+        || rel_path
+            .components()
+            .any(|component| matches!(component, Component::ParentDir | Component::Prefix(_)))
+    {
+        return Err(Error::NotFound);
+    }
+
+    let full_path = crate::ytdlp::media_directory().join(&rel_path);
+    let metadata = tokio::fs::metadata(&full_path)
+        .await
+        .map_err(|_| Error::NotFound)?;
+    let file = tokio::fs::File::open(&full_path)
+        .await
+        .map_err(|_| Error::NotFound)?;
+
+    let stream = stream::unfold(file, |mut file| async {
+        let mut buffer = vec![0u8; 16 * 1024];
+        match file.read(&mut buffer).await {
+            Ok(0) => None,
+            Ok(read) => Some((
+                Ok::<Bytes, std::io::Error>(Bytes::copy_from_slice(&buffer[..read])),
+                file,
+            )),
+            Err(err) => Some((Err(err), file)),
+        }
+    });
+
+    let mut response = Response::new(axum::body::Body::from_stream(stream));
+    let headers = response.headers_mut();
+    headers.insert(
+        header::CONTENT_TYPE,
+        header::HeaderValue::from_static(content_type_for(&full_path)),
+    );
+    if let Ok(value) = header::HeaderValue::from_str(&metadata.len().to_string()) {
+        headers.insert(header::CONTENT_LENGTH, value);
+    }
+
+    Ok(response)
+}
+
 #[debug_handler]
 pub async fn redownload(Path(id): Path<i32>, State(ctx): State<AppContext>) -> Result<Redirect> {
     let (item, _) = load_item(&ctx, id).await?;
@@ -76,5 +143,6 @@ pub fn routes() -> Routes {
         .prefix("medias/")
         .add("/", get(list))
         .add("{id}", get(show))
+        .add("{id}/stream", get(stream))
         .add("{id}/redownload", post(redownload))
 }

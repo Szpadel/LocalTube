@@ -4,14 +4,14 @@
 
 {% block content %}
 <div class="space-y-6">
-  <div class="bg-white shadow rounded-lg p-6">
-    <h1 class="text-2xl font-semibold text-gray-800 mb-4">System Status</h1>
+  <div class="bg-white dark:bg-gray-900 shadow rounded-lg p-6 border border-transparent dark:border-gray-800">
+    <h1 class="text-2xl font-semibold text-gray-800 dark:text-gray-100 mb-4">System Status</h1>
     <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-      <div class="border border-gray-200 rounded-lg p-4">
-        <h2 class="text-lg font-semibold text-gray-700 mb-2">Gluetun Integration</h2>
+      <div class="border border-gray-200 dark:border-gray-800 rounded-lg p-4">
+        <h2 class="text-lg font-semibold text-gray-700 dark:text-gray-200 mb-2">Gluetun Integration</h2>
         {% if gluetun_enabled %}
-          <p class="text-green-700 font-medium">Enabled</p>
-          <p class="text-sm text-gray-600 mt-1">
+          <p class="text-green-700 dark:text-green-300 font-medium">Enabled</p>
+          <p class="text-sm text-gray-600 dark:text-gray-400 mt-1">
             VPN restarts trigger automatically after {{ gluetun_restart_failure_threshold }} consecutive failures (downloads or refreshes) and
             {{ gluetun_restart_min_success_age_minutes }} minutes without success for the triggering task.
           </p>
@@ -27,40 +27,40 @@
                 Restart VPN
               </button>
               {% if download_metrics and download_metrics.restart_in_progress %}
-                <span class="text-sm text-blue-600">Restart in progress…</span>
+                <span class="text-sm text-blue-600 dark:text-blue-300">Restart in progress…</span>
               {% endif %}
             </div>
             <div id="gluetun-restart-result"></div>
           </div>
         {% else %}
-          <p class="text-red-700 font-medium">Disabled</p>
-          <p class="text-sm text-gray-600 mt-1">Set <code class="bg-gray-100 px-1 py-0.5 rounded">LOCALTUBE_GLUETUN_CONTROL_ADDR</code> to enable automatic restarts.</p>
+          <p class="text-red-700 dark:text-red-300 font-medium">Disabled</p>
+          <p class="text-sm text-gray-600 dark:text-gray-400 mt-1">Set <code class="bg-gray-100 dark:bg-gray-800 px-1 py-0.5 rounded">LOCALTUBE_GLUETUN_CONTROL_ADDR</code> to enable automatic restarts.</p>
         {% endif %}
       </div>
     </div>
   </div>
 
-  <div class="bg-white shadow rounded-lg p-6">
-    <h2 class="text-xl font-semibold text-gray-800 mb-4">Download Pipeline</h2>
+  <div class="bg-white dark:bg-gray-900 shadow rounded-lg p-6 border border-transparent dark:border-gray-800">
+    <h2 class="text-xl font-semibold text-gray-800 dark:text-gray-100 mb-4">Download Pipeline</h2>
     {% if download_metrics %}
       <dl class="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div class="border border-gray-100 rounded-lg p-4">
-          <dt class="text-sm font-medium text-gray-500">Successful downloads</dt>
-          <dd class="text-lg font-semibold text-gray-800">{{ download_metrics.success_count }}</dd>
+        <div class="border border-gray-100 dark:border-gray-800 rounded-lg p-4">
+          <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">Successful downloads</dt>
+          <dd class="text-lg font-semibold text-gray-800 dark:text-gray-100">{{ download_metrics.success_count }}</dd>
         </div>
-        <div class="border border-gray-100 rounded-lg p-4">
-          <dt class="text-sm font-medium text-gray-500">Failed downloads</dt>
-          <dd class="text-lg font-semibold text-gray-800">{{ download_metrics.failure_count }}</dd>
+        <div class="border border-gray-100 dark:border-gray-800 rounded-lg p-4">
+          <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">Failed downloads</dt>
+          <dd class="text-lg font-semibold text-gray-800 dark:text-gray-100">{{ download_metrics.failure_count }}</dd>
         </div>
-        <div class="border border-gray-100 rounded-lg p-4">
-          <dt class="text-sm font-medium text-gray-500">Consecutive failures</dt>
-          <dd class="text-lg font-semibold {% if download_metrics.consecutive_failures > 0 %}text-red-600{% else %}text-gray-800{% endif %}">
+        <div class="border border-gray-100 dark:border-gray-800 rounded-lg p-4">
+          <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">Consecutive failures</dt>
+          <dd class="text-lg font-semibold {% if download_metrics.consecutive_failures > 0 %}text-red-600 dark:text-red-300{% else %}text-gray-800 dark:text-gray-100{% endif %}">
             {{ download_metrics.consecutive_failures }}
           </dd>
         </div>
-        <div class="border border-gray-100 rounded-lg p-4">
-          <dt class="text-sm font-medium text-gray-500">Last successful download</dt>
-          <dd class="text-lg font-semibold text-gray-800">
+        <div class="border border-gray-100 dark:border-gray-800 rounded-lg p-4">
+          <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">Last successful download</dt>
+          <dd class="text-lg font-semibold text-gray-800 dark:text-gray-100">
             {% if download_metrics.last_success_seconds_ago is number %}
               {{ (download_metrics.last_success_seconds_ago / 60) | round(method="ceil") }} minutes ago
             {% else %}
@@ -68,9 +68,9 @@
             {% endif %}
           </dd>
         </div>
-        <div class="border border-gray-100 rounded-lg p-4">
-          <dt class="text-sm font-medium text-gray-500">Last failure</dt>
-          <dd class="text-lg font-semibold text-gray-800">
+        <div class="border border-gray-100 dark:border-gray-800 rounded-lg p-4">
+          <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">Last failure</dt>
+          <dd class="text-lg font-semibold text-gray-800 dark:text-gray-100">
             {% if download_metrics.last_failure_seconds_ago is number %}
               {{ (download_metrics.last_failure_seconds_ago / 60) | round(method="ceil") }} minutes ago
             {% else %}
@@ -78,13 +78,13 @@
             {% endif %}
           </dd>
         </div>
-        <div class="border border-gray-100 rounded-lg p-4">
-          <dt class="text-sm font-medium text-gray-500">VPN restarts issued</dt>
-          <dd class="text-lg font-semibold text-gray-800">{{ download_metrics.restart_count }}</dd>
+        <div class="border border-gray-100 dark:border-gray-800 rounded-lg p-4">
+          <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">VPN restarts issued</dt>
+          <dd class="text-lg font-semibold text-gray-800 dark:text-gray-100">{{ download_metrics.restart_count }}</dd>
         </div>
-        <div class="border border-gray-100 rounded-lg p-4">
-          <dt class="text-sm font-medium text-gray-500">Last VPN restart</dt>
-          <dd class="text-lg font-semibold text-gray-800">
+        <div class="border border-gray-100 dark:border-gray-800 rounded-lg p-4">
+          <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">Last VPN restart</dt>
+          <dd class="text-lg font-semibold text-gray-800 dark:text-gray-100">
             {% if download_metrics.last_restart_seconds_ago is number %}
               {{ (download_metrics.last_restart_seconds_ago / 60) | round(method="ceil") }} minutes ago
             {% elif gluetun_enabled %}
@@ -94,12 +94,12 @@
             {% endif %}
           </dd>
           {% if download_metrics.restart_in_progress %}
-            <p class="text-sm text-blue-600 mt-1">Restart in progress…</p>
+            <p class="text-sm text-blue-600 dark:text-blue-300 mt-1">Restart in progress…</p>
           {% endif %}
         </div>
-        <div class="border border-gray-100 rounded-lg p-4">
-          <dt class="text-sm font-medium text-gray-500">Last restart outcome</dt>
-          <dd class="text-sm text-gray-800">
+        <div class="border border-gray-100 dark:border-gray-800 rounded-lg p-4">
+          <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">Last restart outcome</dt>
+          <dd class="text-sm text-gray-800 dark:text-gray-100">
             {% if download_metrics.last_restart_outcome %}
               {{ download_metrics.last_restart_outcome }}
             {% else %}
@@ -111,48 +111,48 @@
             {% endif %}
           </dd>
           {% if download_metrics.last_restart_error %}
-            <p class="text-sm text-red-600 mt-1">Error: {{ download_metrics.last_restart_error }}</p>
+            <p class="text-sm text-red-600 dark:text-red-300 mt-1">Error: {{ download_metrics.last_restart_error }}</p>
           {% endif %}
         </div>
       </dl>
     {% else %}
-      <p class="text-sm text-gray-600">No download metrics recorded yet.</p>
+      <p class="text-sm text-gray-600 dark:text-gray-400">No download metrics recorded yet.</p>
     {% endif %}
   </div>
 
-  <div class="bg-white shadow rounded-lg p-6">
-    <h2 class="text-xl font-semibold text-gray-800 mb-4">All Task Metrics</h2>
+  <div class="bg-white dark:bg-gray-900 shadow rounded-lg p-6 border border-transparent dark:border-gray-800">
+    <h2 class="text-xl font-semibold text-gray-800 dark:text-gray-100 mb-4">All Task Metrics</h2>
     <div class="overflow-x-auto">
-      <table class="min-w-full divide-y divide-gray-200">
-        <thead class="bg-gray-50">
+      <table class="min-w-full divide-y divide-gray-200 dark:divide-gray-800">
+        <thead class="bg-gray-50 dark:bg-gray-800">
           <tr>
-            <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Task</th>
-            <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Success</th>
-            <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Failure</th>
-            <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Consecutive Failures</th>
-            <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Last Success (min)</th>
-            <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Last Failure (min)</th>
+            <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Task</th>
+            <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Success</th>
+            <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Failure</th>
+            <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Consecutive Failures</th>
+            <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Last Success (min)</th>
+            <th class="px-4 py-2 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Last Failure (min)</th>
           </tr>
         </thead>
-        <tbody class="bg-white divide-y divide-gray-200">
+        <tbody class="bg-white dark:bg-gray-900 divide-y divide-gray-200 dark:divide-gray-800">
           {% for entry in tasks %}
             <tr>
-              <td class="px-4 py-2 text-sm font-medium text-gray-900">
+              <td class="px-4 py-2 text-sm font-medium text-gray-900 dark:text-gray-100">
                 {{ entry.name | replace(from="_", to=" ") | title }}
               </td>
-              <td class="px-4 py-2 text-sm text-gray-700">{{ entry.metrics.success_count }}</td>
-              <td class="px-4 py-2 text-sm text-gray-700">{{ entry.metrics.failure_count }}</td>
-              <td class="px-4 py-2 text-sm {% if entry.metrics.consecutive_failures > 0 %}text-red-600{% else %}text-gray-700{% endif %}">
+              <td class="px-4 py-2 text-sm text-gray-700 dark:text-gray-300">{{ entry.metrics.success_count }}</td>
+              <td class="px-4 py-2 text-sm text-gray-700 dark:text-gray-300">{{ entry.metrics.failure_count }}</td>
+              <td class="px-4 py-2 text-sm {% if entry.metrics.consecutive_failures > 0 %}text-red-600 dark:text-red-300{% else %}text-gray-700 dark:text-gray-300{% endif %}">
                 {{ entry.metrics.consecutive_failures }}
               </td>
-              <td class="px-4 py-2 text-sm text-gray-700">
+              <td class="px-4 py-2 text-sm text-gray-700 dark:text-gray-300">
                 {% if entry.metrics.last_success_seconds_ago is number %}
                   {{ (entry.metrics.last_success_seconds_ago / 60) | round(method="ceil") }}
                 {% else %}
                   —
                 {% endif %}
               </td>
-              <td class="px-4 py-2 text-sm text-gray-700">
+              <td class="px-4 py-2 text-sm text-gray-700 dark:text-gray-300">
                 {% if entry.metrics.last_failure_seconds_ago is number %}
                   {{ (entry.metrics.last_failure_seconds_ago / 60) | round(method="ceil") }}
                 {% else %}

@@ -5,43 +5,53 @@ List of Sources
 {% endblock title %}
 
 {% block content %}
-<h1 class="text-3xl font-bold text-red-500 mb-6">Sources</h1>
+<div class="flex items-center justify-between mb-6">
+    <h1 class="text-3xl font-bold text-red-500 dark:text-red-400">Sources</h1>
+    <a href="/sources/new" class="inline-flex items-center text-sm font-semibold text-red-500 dark:text-red-400 hover:underline">
+        New Source
+    </a>
+</div>
 <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
     {% for item in items %}
-    <div class="bg-white rounded-lg shadow p-6">
-        <h2 class="text-xl font-semibold text-red-500 mb-4">
-            {% if item.metadata %}
-                {{ item.metadata.uploader }}
-            {% else %}
-                {{ item.url }}
-            {% endif %}
+    <div class="bg-white dark:bg-gray-900 rounded-lg shadow p-6 border border-transparent dark:border-gray-800">
+        <h2 class="text-xl font-semibold text-red-500 dark:text-red-400 mb-4">
+            <a href="/sources/{{ item.id }}" class="hover:underline">
+                {% if item.metadata %}
+                    {{ item.metadata.uploader }}
+                {% else %}
+                    {{ item.url }}
+                {% endif %}
+            </a>
         </h2>
+        <p class="mb-2 text-sm text-gray-600 dark:text-gray-300">
+            <span class="font-bold text-gray-700 dark:text-gray-200">URL:</span>
+            <a href="{{ item.url }}" class="text-red-500 dark:text-red-400 hover:underline break-all" target="_blank" rel="noreferrer">
+                {{ item.url }}
+            </a>
+        </p>
         {% if item.metadata %}
             {% if item.metadata.list_tabs and (not item.metadata.list_tab or (item.metadata.list_tab and item.metadata.list_count is undefined and item.metadata.items == 0)) %}
-                <p class="mb-2"><span class="font-bold">Video Count:</span> unknown (select tab)</p>
+                <p class="mb-2 text-gray-700 dark:text-gray-200"><span class="font-bold">Video Count:</span> unknown (select tab)</p>
             {% else %}
-                <p class="mb-2"><span class="font-bold">Video Count:</span> {{ item.metadata.items }}</p>
+                <p class="mb-2 text-gray-700 dark:text-gray-200"><span class="font-bold">Video Count:</span> {{ item.metadata.items }}</p>
             {% endif %}
-            <p class="mb-2"><span class="font-bold">Source Provider:</span> {{ item.metadata.source_provider }}</p>
+            <p class="mb-2 text-gray-700 dark:text-gray-200"><span class="font-bold">Source Provider:</span> {{ item.metadata.source_provider }}</p>
         {% endif %}
-        <p class="mb-2"><span class="font-bold">Fetch Last Days:</span> {{ item.fetch_last_days }}</p>
-        <p class="mb-2"><span class="font-bold">Refresh Frequency:</span> {{ item.refresh_frequency }}h</p>
-        <p class="mb-4">
+        <p class="mb-2 text-gray-700 dark:text-gray-200"><span class="font-bold">Fetch Last Days:</span> {{ item.fetch_last_days }}</p>
+        <p class="mb-2 text-gray-700 dark:text-gray-200"><span class="font-bold">Refresh Frequency:</span> {{ item.refresh_frequency }}h</p>
+        <p class="mb-4 text-gray-700 dark:text-gray-200">
             <span class="font-bold">Sponsorblock Categories:</span><br>
             {% for category in item.sponsorblock | split(pat=",") %}
             {% if category %}
-              <span class="inline-block bg-red-100 text-red-800 px-2 py-1 rounded mr-2 mt-1">{{ category }}</span>
+              <span class="inline-block bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-200 px-2 py-1 rounded mr-2 mt-1">{{ category }}</span>
             {% endif %}
             {% endfor %}
         </p>
         <div class="flex space-x-4">
-            <a href="/sources/{{ item.id }}/edit" class="text-red-500 hover:underline">Edit</a>
-            <a href="/sources/{{ item.id }}" class="text-red-500 hover:underline">View</a>
+            <a href="/sources/{{ item.id }}/edit" class="text-red-500 dark:text-red-400 hover:underline">Edit</a>
+            <a href="/sources/{{ item.id }}" class="text-red-500 dark:text-red-400 hover:underline">View</a>
         </div>
     </div>
     {% endfor %}
-</div>
-<div class="mt-6">
-    <a href="/sources/new" class="text-red-500 hover:underline">New Source</a>
 </div>
 {% endblock content %}
