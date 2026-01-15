@@ -211,10 +211,12 @@ impl BackgroundWorker<FetchSourceInfoWorkerArgs> for FetchSourceInfoWorker {
                     .filter(|tab| tab_matches_source(tab, &source.url));
                 let selected_tab = if has_tabs {
                     let resolved_tab = resolve_selected_tab(existing_metadata.as_ref(), &list_tabs);
-                    match (resolved_tab, url_tab.clone()) {
-                        (Some(stored), _) => Some(stored),
-                        (None, Some(url)) => Some(url),
-                        (None, None) => None,
+                    let default_tab = list_tabs.first().map(|tab| tab.url.clone());
+                    match (resolved_tab, url_tab.clone(), default_tab) {
+                        (Some(stored), _, _) => Some(stored),
+                        (None, Some(url), _) => Some(url),
+                        (None, None, Some(first)) => Some(first),
+                        (None, None, None) => None,
                     }
                 } else {
                     stored_tab.clone()
