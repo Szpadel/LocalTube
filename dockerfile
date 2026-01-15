@@ -4,6 +4,14 @@ RUN apt-get update && apt-get install -y libssl-dev pkg-config
 
 WORKDIR /usr/src/
 
+COPY Cargo.toml Cargo.lock ./
+COPY migration/Cargo.toml migration/Cargo.toml
+RUN mkdir -p src/bin migration/src \
+  && printf 'fn main() {}\n' > src/bin/main.rs \
+  && printf 'fn main() {}\n' > src/bin/tool.rs \
+  && touch src/lib.rs migration/src/lib.rs
+RUN cargo build --release --bins
+
 COPY . .
 
 RUN cargo build --release
