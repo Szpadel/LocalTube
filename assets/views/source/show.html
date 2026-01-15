@@ -14,7 +14,7 @@ View Source: {{ item.id }}
 </h1>
 <div class="bg-white rounded-lg shadow p-6 mb-10">
     {% if item.metadata %}
-        {% if item.metadata.list_tabs and (not item.metadata.list_tab or (item.metadata.list_tab and item.metadata.list_count is null and item.metadata.items == 0)) %}
+        {% if item.metadata.list_tabs and (not item.metadata.list_tab or (item.metadata.list_tab and item.metadata.list_count is none and item.metadata.items == 0)) %}
             <p class="mb-4"><span class="font-bold">Video Count:</span> unknown (select tab)</p>
         {% else %}
             <p class="mb-4"><span class="font-bold">Video Count:</span> {{ item.metadata.items }}</p>

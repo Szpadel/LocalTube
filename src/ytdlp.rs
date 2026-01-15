@@ -146,7 +146,7 @@ struct ProbeOutput {
     playlist_count: Option<u64>,
     uploader: Option<String>,
     extractor_key: Option<String>,
-    entries: Option<Vec<ProbeEntry>>,
+    entries: Option<Vec<Option<ProbeEntry>>>,
 }
 
 #[derive(Deserialize)]
@@ -161,6 +161,10 @@ struct ProbeEntry {
     webpage_url: Option<String>,
     url: Option<String>,
     title: Option<String>,
+}
+
+fn flatten_probe_entries(entries: Option<Vec<Option<ProbeEntry>>>) -> Vec<ProbeEntry> {
+    entries.unwrap_or_default().into_iter().flatten().collect()
 }
 
 /// Downloads metadata for the last video from given URL
@@ -217,9 +221,15 @@ pub async fn probe_list_metadata(url: &str, mode: ListProbeMode) -> Result<ListP
     // Use a tiny probe to avoid loading entire large lists just to detect order/count.
     ytdlp_debug::log_ytdlp_json("probe_list_metadata", &output.stdout, Some(url), None).await;
     let probe: ProbeOutput = serde_json::from_slice(&output.stdout)?;
-
-    let entries = probe.entries.unwrap_or_default();
-    let list_kind = match probe.kind.as_deref() {
+    let ProbeOutput {
+        kind,
+        playlist_count,
+        uploader: probe_uploader,
+        extractor_key: probe_extractor_key,
+        entries,
+    } = probe;
+    let entries = flatten_probe_entries(entries);
+    let list_kind = match kind.as_deref() {
         Some("video") => SourceListKind::Video,
         Some("playlist") => SourceListKind::List,
         _ => {
@@ -231,18 +241,16 @@ pub async fn probe_list_metadata(url: &str, mode: ListProbeMode) -> Result<ListP
         }
     };
 
-    let list_count = probe
-        .playlist_count
-        .or_else(|| entries.first().and_then(|e| e.playlist_count));
+    let list_count = playlist_count.or_else(|| entries.first().and_then(|e| e.playlist_count));
 
     let uploader = entries
         .first()
         .and_then(|e| e.uploader.clone())
-        .or(probe.uploader);
+        .or(probe_uploader);
     let source_provider = entries
         .first()
         .and_then(|e| e.extractor_key.clone())
-        .or(probe.extractor_key);
+        .or(probe_extractor_key);
 
     let list_order = match mode {
         ListProbeMode::OrderAware => detect_list_order(&entries),
@@ -281,7 +289,8 @@ pub async fn probe_list_tabs(url: &str) -> Result<Vec<SourceListTabOption>> {
         // Small capped probe prevents expanding the entire channel while still exposing tab URLs.
         ytdlp_debug::log_ytdlp_json("probe_list_tabs", &output.stdout, Some(url), extra).await;
         let probe: ProbeOutput = serde_json::from_slice(&output.stdout)?;
-        Ok::<_, Error>(extract_list_tabs(&probe.entries.unwrap_or_default()))
+        let entries = flatten_probe_entries(probe.entries);
+        Ok::<_, Error>(extract_list_tabs(&entries))
     };
 
     let mut tabs = run_probe(false).await?;
@@ -590,8 +599,8 @@ pub async fn download_media(
 #[cfg(test)]
 mod tests {
     use super::{
-        detect_list_order, extract_list_tabs, stream_should_fail, ProbeEntry, SourceListOrder,
-        SourceListTabOption,
+        detect_list_order, extract_list_tabs, flatten_probe_entries, stream_should_fail,
+        ProbeEntry, ProbeOutput, SourceListOrder, SourceListTabOption,
     };
 
     fn entry(timestamp: Option<i64>, upload_date: Option<&str>) -> ProbeEntry {
@@ -679,6 +688,18 @@ mod tests {
                 url: "https://example.com/videos".to_string(),
                 label: "Videos".to_string(),
             }]
+        );
+    }
+
+    #[test]
+    fn probe_output_skips_null_entries() {
+        let json = r#"{"_type":"playlist","entries":[null,{"_type":"url","webpage_url":"https://example.com/videos","title":"Videos"}]}"#;
+        let probe: ProbeOutput = serde_json::from_str(json).expect("probe json");
+        let entries = flatten_probe_entries(probe.entries);
+        assert_eq!(entries.len(), 1);
+        assert_eq!(
+            entries[0].webpage_url.as_deref(),
+            Some("https://example.com/videos")
         );
     }
 }
