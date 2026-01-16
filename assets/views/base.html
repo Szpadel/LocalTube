@@ -12,12 +12,17 @@
   </script>
   <script>
     (function () {
-      const stored = localStorage.getItem('theme');
+      function getStoredTheme() {
+        try {
+          return localStorage.getItem('theme');
+        } catch (err) {
+          return null;
+        }
+      }
+      const stored = getStoredTheme();
       const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
       const theme = stored === 'light' || stored === 'dark' ? stored : (prefersDark ? 'dark' : 'light');
-      if (theme === 'dark') {
-        document.documentElement.classList.add('dark');
-      }
+      document.documentElement.classList.toggle('dark', theme === 'dark');
     })();
   </script>
   <script src="https://unpkg.com/htmx.org@2.0.0/dist/htmx.min.js"></script>
@@ -123,8 +128,31 @@
       const themeToggleIcon = document.getElementById('theme-toggle-icon');
       const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
 
+      function getStoredTheme() {
+        try {
+          return localStorage.getItem('theme');
+        } catch (err) {
+          return null;
+        }
+      }
+
+      function setStoredTheme(value) {
+        try {
+          localStorage.setItem('theme', value);
+          return true;
+        } catch (err) {
+          // Storage might be blocked; keep behavior non-fatal.
+          return false;
+        }
+      }
+
+      let manualTheme = null;
+
       function currentTheme() {
-        const stored = localStorage.getItem('theme');
+        if (manualTheme === 'light' || manualTheme === 'dark') {
+          return manualTheme;
+        }
+        const stored = getStoredTheme();
         if (stored === 'light' || stored === 'dark') {
           return stored;
         }
@@ -143,11 +171,7 @@
       }
 
       function applyTheme(theme) {
-        if (theme === 'dark') {
-          document.documentElement.classList.add('dark');
-        } else {
-          document.documentElement.classList.remove('dark');
-        }
+        document.documentElement.classList.toggle('dark', theme === 'dark');
         renderThemeIcon(theme);
       }
 
@@ -156,15 +180,16 @@
       if (themeToggle) {
         themeToggle.addEventListener('click', function() {
           const next = currentTheme() === 'dark' ? 'light' : 'dark';
-          localStorage.setItem('theme', next);
+          const storedOk = setStoredTheme(next);
+          manualTheme = storedOk ? null : next;
           applyTheme(next);
         });
       }
 
       if (mediaQuery && mediaQuery.addEventListener) {
         mediaQuery.addEventListener('change', function(event) {
-          const stored = localStorage.getItem('theme');
-          if (stored !== 'light' && stored !== 'dark') {
+          const stored = getStoredTheme();
+          if (stored !== 'light' && stored !== 'dark' && manualTheme === null) {
             applyTheme(event.matches ? 'dark' : 'light');
           }
         });

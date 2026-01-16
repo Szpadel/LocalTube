@@ -16,7 +16,10 @@ use loco_rs::{
 use migration::Migrator;
 
 use crate::{
-    controllers, initializers, models::_entities::users, tasks, workers::downloader::DownloadWorker,
+    controllers, initializers,
+    models::_entities::{medias, sources, users},
+    tasks,
+    workers::downloader::DownloadWorker,
 };
 
 async fn redirect_to_sources() -> Redirect {
@@ -86,6 +89,8 @@ impl Hooks for App {
     }
 
     async fn truncate(ctx: &AppContext) -> Result<()> {
+        truncate_table(&ctx.db, medias::Entity).await?;
+        truncate_table(&ctx.db, sources::Entity).await?;
         truncate_table(&ctx.db, users::Entity).await?;
         Ok(())
     }

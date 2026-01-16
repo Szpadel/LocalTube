@@ -77,7 +77,7 @@ database:
   max_connections: 1
   # Run migration up when application loaded
   auto_migrate: true
-  # Truncate database when application loaded. This is a dangerous operation, make sure that you using this flag only on dev environments or test mode
+  # Truncate database when application loaded (users, sources, medias). This is a dangerous operation, make sure that you using this flag only on dev environments or test mode
   dangerously_truncate: true
   # Recreating schema when application loaded.  This is a dangerous operation, make sure that you using this flag only on dev environments or test mode
   dangerously_recreate: false
