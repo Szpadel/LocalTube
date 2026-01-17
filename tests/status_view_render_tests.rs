@@ -93,3 +93,42 @@ fn renders_status_with_download_metrics() {
         "Response body should include the dynamic restart gate duration"
     );
 }
+
+#[test]
+fn renders_status_with_tailwind_dark_mode_selector_config() {
+    let view_engine = build_test_tera_engine().expect("TeraView build should succeed");
+    let metrics = AllMetrics {
+        tasks: HashMap::new(),
+        gluetun_enabled: false,
+    };
+
+    let response = views::status::show(&view_engine, &metrics)
+        .expect("Rendering status view should succeed")
+        .into_response();
+
+    let runtime = Runtime::new().expect("tokio runtime should be created");
+    let body_bytes = runtime
+        .block_on(body::to_bytes(response.into_body(), usize::MAX))
+        .expect("Converting response body into bytes should succeed");
+    let body = String::from_utf8(body_bytes.to_vec()).expect("Body should be valid UTF-8");
+
+    let cdn_marker = "https://cdn.tailwindcss.com?plugins=forms,typography,aspect-ratio,line-clamp";
+    let config_marker = "tailwind.config";
+    let dark_mode_marker = "darkMode: 'selector'";
+
+    let cdn_pos = body
+        .find(cdn_marker)
+        .expect("Tailwind CDN script should be present");
+    let config_pos = body
+        .find(config_marker)
+        .expect("Tailwind config should be present");
+
+    assert!(
+        cdn_pos < config_pos,
+        "Tailwind config should be declared after the CDN script to ensure it is applied"
+    );
+    assert!(
+        body.contains(dark_mode_marker),
+        "Tailwind config should use selector-based dark mode for manual toggling"
+    );
+}
