@@ -271,7 +271,14 @@ pub async fn redownload(Path(id): Path<i32>, State(ctx): State<AppContext>) -> R
     Entity::update(media_update).exec(&ctx.db).await?;
 
     // Queue new download job
-    FetchMediaWorker::perform_later(&ctx, FetchMediaWorkerArgs { media_id: item.id }).await?;
+    FetchMediaWorker::perform_later(
+        &ctx,
+        FetchMediaWorkerArgs {
+            media_id: item.id,
+            retry_attempt: 0,
+        },
+    )
+    .await?;
 
     // Redirect back to media list (303 See Other forces GET method)
     Ok(Redirect::to("/medias"))

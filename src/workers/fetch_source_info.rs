@@ -432,7 +432,10 @@ impl BackgroundWorker<FetchSourceInfoWorkerArgs> for FetchSourceInfoWorker {
                     if let Some(media_id) = download_media_id {
                         FetchMediaWorker::perform_later(
                             &self.ctx,
-                            FetchMediaWorkerArgs { media_id },
+                            FetchMediaWorkerArgs {
+                                media_id,
+                                retry_attempt: 0,
+                            },
                         )
                         .await?;
                     }

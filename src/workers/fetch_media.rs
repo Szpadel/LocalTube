@@ -8,6 +8,7 @@ use crate::job_tracking::{manager::register_download_task, task::ActiveTask};
 use crate::services::retry::RetryScheduler;
 
 const RETRY_DELAY: Duration = Duration::from_secs(5 * 60);
+const MAX_RETRY_ATTEMPTS: u8 = 3;
 
 pub struct FetchMediaWorker {
     pub ctx: AppContext,
@@ -16,6 +17,8 @@ pub struct FetchMediaWorker {
 #[derive(Clone, Deserialize, Debug, Serialize)]
 pub struct FetchMediaWorkerArgs {
     pub media_id: i32,
+    #[serde(default)]
+    pub retry_attempt: u8,
 }
 
 #[async_trait]
@@ -119,7 +122,7 @@ impl BackgroundWorker<FetchMediaWorkerArgs> for FetchMediaWorker {
                 t.mark_failed(error_msg);
             }
 
-            schedule_media_retry(self.ctx.clone(), args.media_id);
+            schedule_media_retry(self.ctx.clone(), args.media_id, args.retry_attempt);
         } else {
             // On success, mark the task as complete for metrics
             if let Some(t) = task.take() {
@@ -132,7 +135,17 @@ impl BackgroundWorker<FetchMediaWorkerArgs> for FetchMediaWorker {
     }
 }
 
-fn schedule_media_retry(ctx: AppContext, media_id: i32) {
+fn schedule_media_retry(ctx: AppContext, media_id: i32, retry_attempt: u8) {
+    if retry_attempt >= MAX_RETRY_ATTEMPTS {
+        info!(
+            media_id,
+            retry_attempt, "Retry limit reached; skipping media redownload"
+        );
+        return;
+    }
+
+    let next_retry_attempt = retry_attempt.saturating_add(1);
+
     info!(media_id, "Rescheduling media download in 5 minutes");
 
     let check_ctx = ctx.clone();
@@ -152,7 +165,35 @@ fn schedule_media_retry(ctx: AppContext, media_id: i32) {
         },
         move || {
             let ctx = action_ctx.clone();
-            async move { FetchMediaWorker::perform_later(&ctx, FetchMediaWorkerArgs { media_id }).await }
+            async move {
+                FetchMediaWorker::perform_later(
+                    &ctx,
+                    FetchMediaWorkerArgs {
+                        media_id,
+                        retry_attempt: next_retry_attempt,
+                    },
+                )
+                .await
+            }
         },
     );
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{FetchMediaWorkerArgs, MAX_RETRY_ATTEMPTS};
+    use serde_json::json;
+
+    #[test]
+    fn fetch_media_worker_args_retry_attempt_defaults_to_zero() {
+        let args: FetchMediaWorkerArgs =
+            serde_json::from_value(json!({ "media_id": 42 })).expect("args should deserialize");
+
+        assert_eq!(args.retry_attempt, 0);
+    }
+
+    #[test]
+    fn retry_attempt_limit_is_greater_than_zero() {
+        assert!(MAX_RETRY_ATTEMPTS > 0);
+    }
 }
