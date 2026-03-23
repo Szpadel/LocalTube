@@ -21,6 +21,27 @@ use crate::{
 
 const SMALL_LIST_THRESHOLD: u64 = 25;
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum RefreshItemAgeDecision {
+    Sync,
+    DeleteStaleUndownloaded,
+    Skip,
+}
+
+fn refresh_item_age_decision(
+    media: Option<&crate::models::_entities::medias::Model>,
+    item_timestamp: i64,
+    fetch_before_timestamp: i64,
+) -> RefreshItemAgeDecision {
+    if item_timestamp >= fetch_before_timestamp {
+        RefreshItemAgeDecision::Sync
+    } else if media.is_some_and(|existing| existing.media_path.is_none()) {
+        RefreshItemAgeDecision::DeleteStaleUndownloaded
+    } else {
+        RefreshItemAgeDecision::Skip
+    }
+}
+
 fn probe_mode_for(metadata: Option<&SourceMetadata>) -> ListProbeMode {
     match metadata {
         None => ListProbeMode::OrderAware,
@@ -113,6 +134,128 @@ fn resolve_selected_tab(
         .find(|tab| normalize_tab_value(&tab.url) == selected_norm)
         .map(|tab| tab.url.clone())
 }
+
+async fn find_existing_media(
+    db: &DatabaseConnection,
+    source_id: i32,
+    original_url: &str,
+) -> Result<Option<crate::models::_entities::medias::Model>> {
+    Ok(crate::models::medias::Medias::find()
+        .filter(
+            Condition::all()
+                .add(crate::models::_entities::medias::Column::SourceId.eq(source_id))
+                .add(crate::models::_entities::medias::Column::Url.contains(original_url)),
+        )
+        .one(db)
+        .await
+        .map_err(Box::from)?)
+}
+
+async fn sync_media_item(
+    db: &DatabaseConnection,
+    source_id: i32,
+    source_uploader: &str,
+    metadata: crate::models::medias::MediaMetadata,
+    fetch_before_timestamp: i64,
+) -> Result<Option<i32>> {
+    let existing_media = find_existing_media(db, source_id, &metadata.original_url).await?;
+    match refresh_item_age_decision(
+        existing_media.as_ref(),
+        metadata.timestamp,
+        fetch_before_timestamp,
+    ) {
+        RefreshItemAgeDecision::Skip => Ok(None),
+        RefreshItemAgeDecision::DeleteStaleUndownloaded => {
+            if let Some(media) = existing_media {
+                info!(
+                    "{}: Removing stale undownloaded media {}",
+                    source_uploader, metadata.title
+                );
+                media.delete(db).await?;
+            }
+            Ok(None)
+        }
+        RefreshItemAgeDecision::Sync => {
+            if let Some(media) = existing_media {
+                let mut download_media_id = None;
+                if media.media_path.is_none() {
+                    download_media_id = Some(media.id);
+                }
+
+                let mut media_update = MediaActiveModel {
+                    id: Set(media.id),
+                    metadata: Set(Some(
+                        serde_json::to_value(metadata.clone()).map_err(Error::msg)?,
+                    )),
+                    ..Default::default()
+                };
+
+                if let Some(media_path) = &media.media_path {
+                    if !ytdlp::media_directory().join(media_path).exists() {
+                        warn!(
+                            "{}: Media file not found for {} expected file in {}",
+                            source_uploader, metadata.title, media_path
+                        );
+                        media_update.media_path = Set(None);
+                        download_media_id = Some(media.id);
+                    }
+                }
+                crate::models::medias::Medias::update(media_update)
+                    .exec(db)
+                    .await?;
+                Ok(download_media_id)
+            } else {
+                let media_insert = MediaActiveModel {
+                    source_id: Set(source_id),
+                    url: Set(metadata.original_url.clone()),
+                    metadata: Set(Some(serde_json::to_value(metadata).map_err(Error::msg)?)),
+                    ..Default::default()
+                };
+                let media = crate::models::medias::Medias::insert(media_insert)
+                    .exec(db)
+                    .await?;
+                Ok(Some(media.last_insert_id))
+            }
+        }
+    }
+}
+
+async fn cleanup_out_of_window_media(
+    db: &DatabaseConnection,
+    source_id: i32,
+    fetch_before_timestamp: i64,
+    source_uploader: &str,
+) -> Result<()> {
+    let medias = crate::models::medias::Medias::find()
+        .filter(crate::models::_entities::medias::Column::SourceId.eq(source_id))
+        .all(db)
+        .await?;
+
+    for media in medias {
+        let Some(metadata) = media.get_metadata() else {
+            continue;
+        };
+        if metadata.timestamp >= fetch_before_timestamp {
+            continue;
+        }
+
+        if media.media_path.is_some() {
+            info!(
+                "{}: Removing old media {}",
+                source_uploader, &metadata.title
+            );
+            media.remove_media_files()?;
+        } else {
+            info!(
+                "{}: Removing stale undownloaded media {}",
+                source_uploader, &metadata.title
+            );
+        }
+        media.delete(db).await?;
+    }
+    Ok(())
+}
+
 pub struct FetchSourceInfoWorker {
     pub ctx: AppContext,
 }
@@ -355,7 +498,6 @@ impl BackgroundWorker<FetchSourceInfoWorkerArgs> for FetchSourceInfoWorker {
                         ));
                     }
 
-                    let mut download_media_id = None;
                     info!(
                         "{}: Fetching media info for {}",
                         &source_metadata.uploader, &metadata.title
@@ -371,64 +513,17 @@ impl BackgroundWorker<FetchSourceInfoWorkerArgs> for FetchSourceInfoWorker {
                         break;
                     }
 
-                    // try to find existing media by url
-                    let media = crate::models::medias::Medias::find()
-                        .filter(
-                            Condition::all()
-                                .add(
-                                    crate::models::_entities::medias::Column::SourceId
-                                        .eq(source.id),
-                                )
-                                .add(
-                                    crate::models::_entities::medias::Column::Url
-                                        .contains(&metadata.original_url),
-                                ),
-                        )
-                        .one(&self.ctx.db)
-                        .await
-                        .map_err(Box::from)?;
-
+                    // Correctness lives in the age gate below; early stop is only a scan
+                    // optimization when list ordering is known or inferred.
                     let media_metadata: MediaMetadata = metadata.into();
-                    if let Some(media) = media {
-                        if media.media_path.is_none() {
-                            download_media_id = Some(media.id);
-                        }
-
-                        let mut media_update = MediaActiveModel {
-                            id: Set(media.id),
-                            metadata: Set(Some(
-                                serde_json::to_value(media_metadata.clone()).map_err(Error::msg)?,
-                            )),
-                            ..Default::default()
-                        };
-
-                        if let Some(media_path) = &media.media_path {
-                            if !ytdlp::media_directory().join(media_path).exists() {
-                                warn!(
-                                    "{}: Media file not found for {} expected file in {}",
-                                    &source_metadata.uploader, &media_metadata.title, media_path
-                                );
-                                media_update.media_path = Set(None);
-                                download_media_id = Some(media.id);
-                            }
-                        }
-                        crate::models::medias::Medias::update(media_update)
-                            .exec(&self.ctx.db)
-                            .await?;
-                    } else {
-                        let media_insert = MediaActiveModel {
-                            source_id: Set(source.id),
-                            url: Set(media_metadata.original_url.clone()),
-                            metadata: Set(Some(
-                                serde_json::to_value(media_metadata).map_err(Error::msg)?,
-                            )),
-                            ..Default::default()
-                        };
-                        let media = crate::models::medias::Medias::insert(media_insert)
-                            .exec(&self.ctx.db)
-                            .await?;
-                        download_media_id = Some(media.last_insert_id);
-                    }
+                    let download_media_id = sync_media_item(
+                        &self.ctx.db,
+                        source.id,
+                        &source_metadata.uploader,
+                        media_metadata,
+                        fetch_before_timestamp,
+                    )
+                    .await?;
                     if let Some(media_id) = download_media_id {
                         FetchMediaWorker::perform_later(
                             &self.ctx,
@@ -445,24 +540,13 @@ impl BackgroundWorker<FetchSourceInfoWorkerArgs> for FetchSourceInfoWorker {
                 // select all media that were created after the fetch_before_timestamp
                 // this info is stored in metadata.timestamp, so we need to load all media for source in batches and check the timestamp
 
-                let medias = crate::models::medias::Medias::find()
-                    .filter(crate::models::_entities::medias::Column::SourceId.eq(source.id))
-                    .all(&self.ctx.db)
-                    .await?;
-
-                for media in medias {
-                    if let Some(metadata) = media.get_metadata() {
-                        if metadata.timestamp < fetch_before_timestamp && media.media_path.is_some()
-                        {
-                            info!(
-                                "{}: Removing old media {}",
-                                &source_metadata.uploader, &metadata.title
-                            );
-                            media.remove_media_files()?;
-                            media.delete(&self.ctx.db).await?;
-                        }
-                    }
-                }
+                cleanup_out_of_window_media(
+                    &self.ctx.db,
+                    source.id,
+                    fetch_before_timestamp,
+                    &source_metadata.uploader,
+                )
+                .await?;
 
                 let source_update = SourceActiveModel {
                     id: Set(source.id),
@@ -504,5 +588,242 @@ impl BackgroundWorker<FetchSourceInfoWorkerArgs> for FetchSourceInfoWorker {
 
         // Return the original result to propagate errors properly
         result
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{cleanup_out_of_window_media, sync_media_item};
+    use crate::{app::App, models::_entities};
+    use loco_rs::app::AppContext;
+    use loco_rs::testing::prelude::*;
+    use sea_orm::{ActiveModelTrait, ColumnTrait, EntityTrait, QueryFilter, Set};
+    use serial_test::serial;
+
+    use crate::models::medias::MediaMetadata;
+
+    async fn insert_source(ctx: &AppContext) -> _entities::sources::Model {
+        _entities::sources::ActiveModel {
+            url: Set("https://example.com/channel".to_string()),
+            fetch_last_days: Set(7),
+            refresh_frequency: Set(24),
+            sponsorblock: Set(String::new()),
+            metadata: Set(None),
+            last_refreshed_at: Set(None),
+            last_scheduled_refresh: Set(None),
+            ..Default::default()
+        }
+        .insert(&ctx.db)
+        .await
+        .expect("source should be inserted")
+    }
+
+    fn media_metadata(original_url: &str, title: &str, timestamp: i64) -> MediaMetadata {
+        MediaMetadata {
+            title: title.to_string(),
+            description: None,
+            duration: 60,
+            extractor_key: "youtube".to_string(),
+            original_url: original_url.to_string(),
+            timestamp,
+        }
+    }
+
+    async fn insert_media(
+        ctx: &AppContext,
+        source_id: i32,
+        metadata: &MediaMetadata,
+        media_path: Option<&str>,
+    ) -> _entities::medias::Model {
+        _entities::medias::ActiveModel {
+            url: Set(metadata.original_url.clone()),
+            source_id: Set(source_id),
+            metadata: Set(Some(
+                serde_json::to_value(metadata).expect("metadata should serialize"),
+            )),
+            media_path: Set(media_path.map(str::to_string)),
+            ..Default::default()
+        }
+        .insert(&ctx.db)
+        .await
+        .expect("media should be inserted")
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn sync_media_item_skips_out_of_window_new_media() {
+        let boot = boot_test_with_create_db::<App>().await.unwrap();
+        let source = insert_source(&boot.app_context).await;
+        let cutoff = chrono::Utc::now().timestamp();
+        let metadata = media_metadata("https://example.com/video-old", "Old Video", cutoff - 1);
+
+        let queued = sync_media_item(
+            &boot.app_context.db,
+            source.id,
+            "Uploader",
+            metadata.clone(),
+            cutoff,
+        )
+        .await
+        .expect("sync should succeed");
+
+        assert_eq!(queued, None);
+        assert!(_entities::medias::Entity::find()
+            .filter(_entities::medias::Column::SourceId.eq(source.id))
+            .all(&boot.app_context.db)
+            .await
+            .expect("media query should succeed")
+            .is_empty());
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn sync_media_item_deletes_out_of_window_stale_row() {
+        let boot = boot_test_with_create_db::<App>().await.unwrap();
+        let source = insert_source(&boot.app_context).await;
+        let cutoff = chrono::Utc::now().timestamp();
+        let metadata = media_metadata("https://example.com/video-stale", "Stale Video", cutoff - 1);
+        let stale = insert_media(&boot.app_context, source.id, &metadata, None).await;
+
+        let queued = sync_media_item(
+            &boot.app_context.db,
+            source.id,
+            "Uploader",
+            metadata,
+            cutoff,
+        )
+        .await
+        .expect("sync should succeed");
+
+        assert_eq!(queued, None);
+        assert!(_entities::medias::Entity::find_by_id(stale.id)
+            .one(&boot.app_context.db)
+            .await
+            .expect("media lookup should succeed")
+            .is_none());
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn sync_media_item_inserts_in_window_media_and_requests_download() {
+        let boot = boot_test_with_create_db::<App>().await.unwrap();
+        let source = insert_source(&boot.app_context).await;
+        let cutoff = chrono::Utc::now().timestamp();
+        let metadata = media_metadata(
+            "https://example.com/video-fresh",
+            "Fresh Video",
+            cutoff + 60,
+        );
+
+        let queued = sync_media_item(
+            &boot.app_context.db,
+            source.id,
+            "Uploader",
+            metadata.clone(),
+            cutoff,
+        )
+        .await
+        .expect("sync should succeed");
+
+        let inserted_id = queued.expect("fresh media should request download");
+        let inserted = _entities::medias::Entity::find_by_id(inserted_id)
+            .one(&boot.app_context.db)
+            .await
+            .expect("media lookup should succeed")
+            .expect("media row should exist");
+        assert_eq!(inserted.url, metadata.original_url);
+        assert!(inserted.media_path.is_none());
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn sync_media_item_skips_old_downloaded_row_without_requeue() {
+        let boot = boot_test_with_create_db::<App>().await.unwrap();
+        let source = insert_source(&boot.app_context).await;
+        let cutoff = chrono::Utc::now().timestamp();
+        let metadata = media_metadata(
+            "https://example.com/video-downloaded",
+            "Downloaded Video",
+            cutoff - 1,
+        );
+        let existing = insert_media(
+            &boot.app_context,
+            source.id,
+            &metadata,
+            Some("existing/video-downloaded.mkv"),
+        )
+        .await;
+
+        let queued = sync_media_item(
+            &boot.app_context.db,
+            source.id,
+            "Uploader",
+            metadata,
+            cutoff,
+        )
+        .await
+        .expect("sync should succeed");
+
+        assert_eq!(queued, None);
+        let preserved = _entities::medias::Entity::find_by_id(existing.id)
+            .one(&boot.app_context.db)
+            .await
+            .expect("media lookup should succeed")
+            .expect("downloaded row should remain until cleanup");
+        assert_eq!(
+            preserved.media_path.as_deref(),
+            Some("existing/video-downloaded.mkv")
+        );
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn cleanup_out_of_window_media_deletes_stale_and_downloaded_rows() {
+        let boot = boot_test_with_create_db::<App>().await.unwrap();
+        let source = insert_source(&boot.app_context).await;
+        let cutoff = chrono::Utc::now().timestamp();
+        let stale_metadata = media_metadata("https://example.com/video-stale", "Stale", cutoff - 1);
+        let downloaded_metadata = media_metadata(
+            "https://example.com/video-old",
+            "Old Downloaded",
+            cutoff - 1,
+        );
+        let fresh_metadata =
+            media_metadata("https://example.com/video-fresh", "Fresh", cutoff + 60);
+        let stale = insert_media(&boot.app_context, source.id, &stale_metadata, None).await;
+        let downloaded = insert_media(
+            &boot.app_context,
+            source.id,
+            &downloaded_metadata,
+            Some("missing/video-old.mkv"),
+        )
+        .await;
+        let fresh = insert_media(
+            &boot.app_context,
+            source.id,
+            &fresh_metadata,
+            Some("missing/video-fresh.mkv"),
+        )
+        .await;
+
+        cleanup_out_of_window_media(&boot.app_context.db, source.id, cutoff, "Uploader")
+            .await
+            .expect("cleanup should succeed");
+
+        assert!(_entities::medias::Entity::find_by_id(stale.id)
+            .one(&boot.app_context.db)
+            .await
+            .expect("stale lookup should succeed")
+            .is_none());
+        assert!(_entities::medias::Entity::find_by_id(downloaded.id)
+            .one(&boot.app_context.db)
+            .await
+            .expect("downloaded lookup should succeed")
+            .is_none());
+        assert!(_entities::medias::Entity::find_by_id(fresh.id)
+            .one(&boot.app_context.db)
+            .await
+            .expect("fresh lookup should succeed")
+            .is_some());
     }
 }
