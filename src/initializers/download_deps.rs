@@ -13,7 +13,7 @@ use crate::ytdlp;
 // YouTube changes often break older yt-dlp releases, so the app checks for a new release every day.
 const YT_DLP_UPDATE_INTERVAL: Duration = Duration::from_hours(24);
 
-/// Installs missing yt-dlp and ffmpeg binaries and keeps yt-dlp at the latest release.
+/// Installs a missing yt-dlp binary and keeps it at the latest release.
 pub struct DownloadDeps;
 
 #[async_trait]
@@ -24,12 +24,12 @@ impl Initializer for DownloadDeps {
 
     async fn before_run(&self, app_context: &AppContext) -> Result<()> {
         // The loco test boot also runs `before_run`. Tests must not change
-        // `libs/` or need network access, and no test runs yt-dlp or ffmpeg.
+        // `libs/` or need network access, and no test runs yt-dlp.
         if app_context.environment == Environment::Test {
             return Ok(());
         }
 
-        ytdlp::download_deps().await.map_err(Error::msg)?;
+        ytdlp::install_yt_dlp().await.map_err(Error::msg)?;
 
         // Update before the first source refresh starts, so that it uses the new release.
         update_yt_dlp_best_effort().await;

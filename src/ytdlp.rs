@@ -8,7 +8,7 @@ use tokio::sync::Semaphore;
 use tokio::{io::AsyncBufReadExt, process::Command};
 use tokio_process_terminate::TerminateExt;
 use tracing::{info, warn};
-use yt_dlp::client::deps::Libraries;
+use yt_dlp::client::deps::LibraryInstaller;
 
 const LIBS_DIR: &str = "libs";
 const STREAM_ERROR_MESSAGE: &str = "yt-dlp stream failed; check logs for details";
@@ -69,22 +69,21 @@ pub fn yt_dlp_path() -> PathBuf {
     PathBuf::from(LIBS_DIR).join("yt-dlp")
 }
 
-/// Returns the path to the ffmpeg executable
-#[must_use]
-pub fn ffmpeg_path() -> PathBuf {
-    PathBuf::from(LIBS_DIR).join("ffmpeg")
-}
-
-/// Downloads required dependencies
+/// Installs the latest yt-dlp release when `libs/yt-dlp` is missing.
+///
+/// The app installs no ffmpeg. It passes no `--ffmpeg-location`, so yt-dlp
+/// runs the `ffmpeg` and `ffprobe` from `PATH`.
 ///
 /// # Errors
 ///
-/// Returns error if download or installation fails
-pub async fn download_deps() -> Result<(), yt_dlp::error::Error> {
-    let yt_dlp = yt_dlp_path();
-    let ffmpeg = ffmpeg_path();
-    let libraries = Libraries::new(yt_dlp, ffmpeg);
-    libraries.install_dependencies().await?;
+/// Returns an error if the download or the installation fails.
+pub async fn install_yt_dlp() -> Result<(), yt_dlp::error::Error> {
+    if yt_dlp_path().exists() {
+        return Ok(());
+    }
+    LibraryInstaller::new(PathBuf::from(LIBS_DIR))
+        .install_youtube(None)
+        .await?;
     Ok(())
 }
 

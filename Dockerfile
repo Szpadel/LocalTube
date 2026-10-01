@@ -22,6 +22,8 @@ RUN cargo build --release --bins
 FROM denoland/deno:bin AS deno
 
 FROM debian:trixie-slim
+# yt-dlp runs ffmpeg and ffprobe from PATH. It needs Deno (copied below) to
+# decipher YouTube signatures.
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     tini \
