@@ -3,3 +3,13 @@ Dockerfile
 .dockerignore
 .git
 .gitignore
+# Local runtime data: downloaded binaries, media, and databases.
+libs
+media
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+# Local agent and editor tool data.
+.agent
+.claude
+.serena
