@@ -39,7 +39,7 @@ impl std::fmt::Debug for TaskManager {
                 "tasks",
                 &format!(
                     "Arc<Mutex<HashMap<TaskId, TaskStatus>>> with {} entries",
-                    self.tasks.lock().map(|t| t.len()).unwrap_or(0)
+                    self.tasks.lock().map_or(0, |t| t.len())
                 ),
             )
             .field("tx", &"broadcast::Sender<TaskUpdate>")

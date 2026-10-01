@@ -7,7 +7,7 @@ use tracing::{error, info};
 use crate::job_tracking::{manager::register_download_task, task::ActiveTask};
 use crate::services::retry::RetryScheduler;
 
-const RETRY_DELAY: Duration = Duration::from_secs(5 * 60);
+const RETRY_DELAY: Duration = Duration::from_mins(5);
 
 pub struct FetchMediaWorker {
     pub ctx: AppContext,
