@@ -1,7 +1,8 @@
 use crate::ytdlp_debug;
 use loco_rs::{Error, Result};
-use serde::{Deserialize, Serialize};
+use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use std::path::PathBuf;
+use std::process::Output;
 use std::sync::{Arc, OnceLock};
 use tokio::sync::Semaphore;
 use tokio::{io::AsyncBufReadExt, process::Command};
@@ -11,6 +12,8 @@ use yt_dlp::client::deps::Libraries;
 
 const LIBS_DIR: &str = "libs";
 const STREAM_ERROR_MESSAGE: &str = "yt-dlp stream failed; check logs for details";
+/// yt-dlp starts each error report on stderr with this prefix.
+const ERROR_LINE_PREFIX: &str = "ERROR:";
 static CONCURRENCY_SEMAPHORE: OnceLock<Arc<Semaphore>> = OnceLock::new();
 
 pub fn ytdtp_concurrency() -> &'static Arc<Semaphore> {
@@ -167,6 +170,43 @@ fn flatten_probe_entries(entries: Option<Vec<Option<ProbeEntry>>>) -> Vec<ProbeE
     entries.unwrap_or_default().into_iter().flatten().collect()
 }
 
+/// Describes how a finished yt-dlp run ended: its exit status and the `ERROR:` lines from stderr.
+///
+/// Example: `(exit status: 1) ERROR: [youtube] abc: Video unavailable`.
+fn describe_run(output: &Output) -> String {
+    let mut description = format!("({})", output.status);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    for error_line in stderr
+        .lines()
+        .filter(|line| line.starts_with(ERROR_LINE_PREFIX))
+    {
+        description.push(' ');
+        description.push_str(error_line);
+    }
+    description
+}
+
+/// Parses the JSON document that yt-dlp wrote to stdout.
+///
+/// # Errors
+///
+/// Returns an error with [`describe_run`] when stdout is empty or is not valid JSON for `T`.
+/// When extraction fails, yt-dlp writes nothing to stdout, and only its `ERROR:` lines give the cause.
+fn parse_stdout_json<T: DeserializeOwned>(output: &Output) -> Result<T> {
+    if output.stdout.trim_ascii().is_empty() {
+        return Err(Error::string(&format!(
+            "yt-dlp wrote no JSON {}",
+            describe_run(output)
+        )));
+    }
+    serde_json::from_slice(&output.stdout).map_err(|parse_error| {
+        Error::string(&format!(
+            "yt-dlp wrote invalid JSON: {parse_error} {}",
+            describe_run(output)
+        ))
+    })
+}
+
 /// Downloads metadata for the last video from given URL
 ///
 /// # Errors
@@ -195,7 +235,7 @@ pub async fn download_last_video_metadata(url: &str) -> Result<VideoMetadata> {
         None,
     )
     .await;
-    let video_metadata: VideoMetadata = serde_json::from_slice(&output.stdout)?;
+    let video_metadata: VideoMetadata = parse_stdout_json(&output)?;
     Ok(video_metadata)
 }
 
@@ -220,7 +260,7 @@ pub async fn probe_list_metadata(url: &str, mode: ListProbeMode) -> Result<ListP
 
     // Use a tiny probe to avoid loading entire large lists just to detect order/count.
     ytdlp_debug::log_ytdlp_json("probe_list_metadata", &output.stdout, Some(url), None).await;
-    let probe: ProbeOutput = serde_json::from_slice(&output.stdout)?;
+    let probe: ProbeOutput = parse_stdout_json(&output)?;
     let ProbeOutput {
         kind,
         playlist_count,
@@ -288,7 +328,7 @@ pub async fn probe_list_tabs(url: &str) -> Result<Vec<SourceListTabOption>> {
         let extra = if flat { Some("flat") } else { None };
         // Small capped probe prevents expanding the entire channel while still exposing tab URLs.
         ytdlp_debug::log_ytdlp_json("probe_list_tabs", &output.stdout, Some(url), extra).await;
-        let probe: ProbeOutput = serde_json::from_slice(&output.stdout)?;
+        let probe: ProbeOutput = parse_stdout_json(&output)?;
         let entries = flatten_probe_entries(probe.entries);
         Ok::<_, Error>(extract_list_tabs(&entries))
     };
@@ -575,7 +615,7 @@ pub async fn download_media(
         Some(&format!("source_id={}", source.id)),
     )
     .await;
-    let video_metadata: VideoMetadata = serde_json::from_slice(&output.stdout)?;
+    let video_metadata: VideoMetadata = parse_stdout_json(&output)?;
 
     // yt-dlp do not report remuxed file path, we need to check if it exists
     // check if video_metadata.filename with .mkv extension exists if not check if video_metadata.filename exists
@@ -586,7 +626,10 @@ pub async fn download_media(
     } else if video_path.exists() {
         video_path
     } else {
-        return Err(Error::string("Failed to download media"));
+        return Err(Error::string(&format!(
+            "yt-dlp created no media file {}",
+            describe_run(&output)
+        )));
     };
 
     Ok(PathBuf::from(&video_path)
@@ -599,9 +642,65 @@ pub async fn download_media(
 #[cfg(test)]
 mod tests {
     use super::{
-        detect_list_order, extract_list_tabs, flatten_probe_entries, stream_should_fail,
-        ProbeEntry, ProbeOutput, SourceListOrder, SourceListTabOption,
+        detect_list_order, extract_list_tabs, flatten_probe_entries, parse_stdout_json,
+        stream_should_fail, ProbeEntry, ProbeOutput, SourceListOrder, SourceListTabOption,
     };
+    use std::os::unix::process::ExitStatusExt;
+    use std::process::{ExitStatus, Output};
+
+    fn finished_run(exit_code: i32, stdout: &str, stderr: &str) -> Output {
+        Output {
+            // A wait status stores the exit code in its second byte.
+            status: ExitStatus::from_raw(exit_code << 8),
+            stdout: stdout.as_bytes().to_vec(),
+            stderr: stderr.as_bytes().to_vec(),
+        }
+    }
+
+    #[test]
+    fn parse_stdout_json_reports_yt_dlp_error_when_stdout_is_empty() {
+        let run = finished_run(
+            1,
+            "",
+            "WARNING: [youtube] SsYKLXIU7no: Some web client https formats have been skipped\n\
+             ERROR: [youtube] SsYKLXIU7no: The page needs to be reloaded.\n",
+        );
+
+        let error = parse_stdout_json::<serde_json::Value>(&run)
+            .expect_err("empty stdout must fail")
+            .to_string();
+
+        assert_eq!(
+            error,
+            "yt-dlp wrote no JSON (exit status: 1) \
+             ERROR: [youtube] SsYKLXIU7no: The page needs to be reloaded."
+        );
+    }
+
+    #[test]
+    fn parse_stdout_json_reports_parse_error_for_invalid_json() {
+        let run = finished_run(0, "{\"title\":", "");
+
+        let error = parse_stdout_json::<serde_json::Value>(&run)
+            .expect_err("truncated JSON must fail")
+            .to_string();
+
+        assert!(
+            error.starts_with("yt-dlp wrote invalid JSON: EOF while parsing"),
+            "{error}"
+        );
+        assert!(error.ends_with(" (exit status: 0)"), "{error}");
+    }
+
+    #[test]
+    fn parse_stdout_json_accepts_json_from_run_with_max_downloads_reached() {
+        // yt-dlp exits with status 101 after it reaches `--max-downloads`.
+        let run = finished_run(101, "{\"title\":\"Video\"}\n", "");
+
+        let value = parse_stdout_json::<serde_json::Value>(&run).expect("valid JSON must parse");
+
+        assert_eq!(value["title"], "Video");
+    }
 
     fn entry(timestamp: Option<i64>, upload_date: Option<&str>) -> ProbeEntry {
         ProbeEntry {
