@@ -1,7 +1,7 @@
 use crate::ytdlp_debug;
 use loco_rs::{Error, Result};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::Output;
 use std::sync::{Arc, OnceLock};
 use tokio::sync::Semaphore;
@@ -86,6 +86,71 @@ pub async fn download_deps() -> Result<(), yt_dlp::error::Error> {
     let libraries = Libraries::new(yt_dlp, ffmpeg);
     libraries.install_dependencies().await?;
     Ok(())
+}
+
+/// Updates the yt-dlp binary to the latest stable release.
+///
+/// `yt-dlp --update` replaces its own file in steps: it renames the old file
+/// away, renames the new file into place, and then makes it executable. A
+/// yt-dlp start between these steps fails. Thus this function updates a copy
+/// and renames the copy over `libs/yt-dlp` in one atomic step. yt-dlp
+/// processes that run at that time keep the old file open and continue to
+/// operate.
+///
+/// A failed attempt can leave the copy at `libs/yt-dlp.staged`. The next
+/// attempt replaces it.
+///
+/// Returns the last line that yt-dlp wrote, for example
+/// `Updated yt-dlp to stable@2026.08.19 from yt-dlp/yt-dlp`.
+///
+/// # Errors
+///
+/// Returns an error if the copy, the update, or the rename fails. In each
+/// case, `libs/yt-dlp` stays unchanged.
+pub async fn update_yt_dlp() -> Result<String> {
+    update_binary_atomically(&yt_dlp_path()).await
+}
+
+/// Runs `--update` on a staged copy of the yt-dlp binary at `installed` and
+/// renames the copy over `installed`. See [`update_yt_dlp`].
+async fn update_binary_atomically(installed: &Path) -> Result<String> {
+    let staged = installed.with_extension("staged");
+    tokio::fs::copy(installed, &staged).await.map_err(|error| {
+        Error::string(&format!(
+            "Failed to copy {} to {}: {error}",
+            installed.display(),
+            staged.display()
+        ))
+    })?;
+
+    // When shutdown cancels this future, the update must stop too. Otherwise
+    // it continues to change the staged copy after the app stops.
+    let output = Command::new(&staged)
+        .arg("--update")
+        .kill_on_drop(true)
+        .output()
+        .await
+        .map_err(|error| {
+            Error::string(&format!("Failed to start {}: {error}", staged.display()))
+        })?;
+    if !output.status.success() {
+        return Err(Error::string(&format!(
+            "yt-dlp update failed {}",
+            describe_run(&output)
+        )));
+    }
+
+    tokio::fs::rename(&staged, installed)
+        .await
+        .map_err(|error| {
+            Error::string(&format!(
+                "Failed to rename {} to {}: {error}",
+                staged.display(),
+                installed.display()
+            ))
+        })?;
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    Ok(stdout.lines().last().unwrap_or_default().to_string())
 }
 
 #[derive(Deserialize, Serialize)]
@@ -643,10 +708,95 @@ pub async fn download_media(
 mod tests {
     use super::{
         detect_list_order, extract_list_tabs, flatten_probe_entries, parse_stdout_json,
-        stream_should_fail, ProbeEntry, ProbeOutput, SourceListOrder, SourceListTabOption,
+        stream_should_fail, update_binary_atomically, ProbeEntry, ProbeOutput, SourceListOrder,
+        SourceListTabOption,
     };
-    use std::os::unix::process::ExitStatusExt;
+    use serial_test::serial;
+    use std::os::unix::{fs::PermissionsExt, process::ExitStatusExt};
+    use std::path::{Path, PathBuf};
     use std::process::{ExitStatus, Output};
+
+    /// Temporary directory that is removed when the value is dropped.
+    struct ScratchDir(PathBuf);
+
+    impl ScratchDir {
+        fn new() -> Self {
+            let path = std::env::temp_dir().join(format!("localtube-{}", uuid::Uuid::new_v4()));
+            std::fs::create_dir(&path).expect("scratch directory should be created");
+            Self(path)
+        }
+    }
+
+    impl Drop for ScratchDir {
+        fn drop(&mut self) {
+            // A leftover directory in the system temp directory does not affect other tests.
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+
+    fn write_script(path: &Path, body: &str) {
+        std::fs::write(path, format!("#!/bin/sh\n{body}\n")).expect("script should be written");
+        std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o755))
+            .expect("script should be made executable");
+    }
+
+    // Serial: a process start in a parallel test can inherit the write handle
+    // of a new script for a moment, and then the start of that script fails.
+    #[tokio::test]
+    #[serial]
+    async fn failed_update_keeps_installed_binary() {
+        let scratch = ScratchDir::new();
+        let installed = scratch.0.join("yt-dlp");
+        write_script(
+            &installed,
+            "echo 'ERROR: Unable to obtain version info' >&2\nexit 100",
+        );
+        let installed_before = std::fs::read(&installed).expect("binary should be readable");
+
+        let error = update_binary_atomically(&installed)
+            .await
+            .expect_err("update must fail")
+            .to_string();
+
+        assert_eq!(
+            error,
+            "yt-dlp update failed (exit status: 100) ERROR: Unable to obtain version info"
+        );
+        assert_eq!(
+            std::fs::read(&installed).expect("binary should be readable"),
+            installed_before
+        );
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn successful_update_replaces_installed_binary() {
+        let scratch = ScratchDir::new();
+        let installed = scratch.0.join("yt-dlp");
+        // Like `yt-dlp --update`, the script replaces its own file with the new release.
+        write_script(
+            &installed,
+            "printf '#!/bin/sh\\necho 2026.08.19\\n' > \"$0.new\"\n\
+             chmod 755 \"$0.new\"\n\
+             mv \"$0.new\" \"$0\"\n\
+             echo 'Updated yt-dlp to stable@2026.08.19 from yt-dlp/yt-dlp'",
+        );
+
+        let result = update_binary_atomically(&installed)
+            .await
+            .expect("update must succeed");
+        let version = tokio::process::Command::new(&installed)
+            .output()
+            .await
+            .expect("updated binary should run");
+
+        assert_eq!(
+            result,
+            "Updated yt-dlp to stable@2026.08.19 from yt-dlp/yt-dlp"
+        );
+        assert_eq!(String::from_utf8_lossy(&version.stdout), "2026.08.19\n");
+        assert!(!installed.with_extension("staged").exists());
+    }
 
     fn finished_run(exit_code: i32, stdout: &str, stderr: &str) -> Output {
         Output {
