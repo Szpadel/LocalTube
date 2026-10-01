@@ -62,7 +62,7 @@
           <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">Last successful download</dt>
           <dd class="text-lg font-semibold text-gray-800 dark:text-gray-100">
             {% if download_metrics.last_success_seconds_ago is number %}
-              {{ (download_metrics.last_success_seconds_ago / 60) | round(method="ceil") }} minutes ago
+              {{ (download_metrics.last_success_seconds_ago / 60) | round(method="ceil") | int }} minutes ago
             {% else %}
               Not recorded yet
             {% endif %}
@@ -72,7 +72,7 @@
           <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">Last failure</dt>
           <dd class="text-lg font-semibold text-gray-800 dark:text-gray-100">
             {% if download_metrics.last_failure_seconds_ago is number %}
-              {{ (download_metrics.last_failure_seconds_ago / 60) | round(method="ceil") }} minutes ago
+              {{ (download_metrics.last_failure_seconds_ago / 60) | round(method="ceil") | int }} minutes ago
             {% else %}
               Not recorded yet
             {% endif %}
@@ -86,7 +86,7 @@
           <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">Last VPN restart</dt>
           <dd class="text-lg font-semibold text-gray-800 dark:text-gray-100">
             {% if download_metrics.last_restart_seconds_ago is number %}
-              {{ (download_metrics.last_restart_seconds_ago / 60) | round(method="ceil") }} minutes ago
+              {{ (download_metrics.last_restart_seconds_ago / 60) | round(method="ceil") | int }} minutes ago
             {% elif gluetun_enabled %}
               Not triggered yet
             {% else %}
@@ -147,14 +147,14 @@
               </td>
               <td class="px-4 py-2 text-sm text-gray-700 dark:text-gray-300">
                 {% if entry.metrics.last_success_seconds_ago is number %}
-                  {{ (entry.metrics.last_success_seconds_ago / 60) | round(method="ceil") }}
+                  {{ (entry.metrics.last_success_seconds_ago / 60) | round(method="ceil") | int }}
                 {% else %}
                   —
                 {% endif %}
               </td>
               <td class="px-4 py-2 text-sm text-gray-700 dark:text-gray-300">
                 {% if entry.metrics.last_failure_seconds_ago is number %}
-                  {{ (entry.metrics.last_failure_seconds_ago / 60) | round(method="ceil") }}
+                  {{ (entry.metrics.last_failure_seconds_ago / 60) | round(method="ceil") | int }}
                 {% else %}
                   —
                 {% endif %}

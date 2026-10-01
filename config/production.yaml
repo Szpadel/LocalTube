@@ -23,7 +23,7 @@ workers:
 
 database:
   # Database connection URI
-  uri: {{ get_env(name="DATABASE_URL", default="sqlite://localtube.sqlite?mode=rwc") }}
+  uri: <%= get_env(name="DATABASE_URL", default="sqlite://localtube.sqlite?mode=rwc") %>
   auto_migrate: true
   enable_logging: false
   min_connections: 1

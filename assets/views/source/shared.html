@@ -1,5 +1,5 @@
 
-{% macro sponsorblock_checkboxes(sponsorblock) %}
+{% component sponsorblock_checkboxes(sponsorblock: string) %}
 {% set sponsorblock_categories = [
 "sponsor|Sponsor",
 "intro|Intro",
@@ -19,18 +19,18 @@
             {% set category = category_str | split(pat="|") %}
             <label class="flex items-center text-gray-700 dark:text-gray-200">
                 <input type="checkbox"
-                       name="sponsorblock_{{ category.0 }}"
+                       name="sponsorblock_{{ category[0] }}"
                        class="sponsorblock-category mr-2"
-                       {% if category.0 in sponsorblock_list %}checked{% endif %}>
-                {{ category.1 }}
+                       {% if category[0] in sponsorblock_list %}checked{% endif %}>
+                {{ category[1] }}
             </label>
         {% endfor %}
     </div>
     <input type="hidden" id="sponsorblock" name="sponsorblock" value="{{ sponsorblock }}">
 </div>
-{% endmacro %}
+{% endcomponent sponsorblock_checkboxes %}
 
-{% macro sponsorblock_js() %}
+{% component sponsorblock_js() %}
 <script>
     function updateSponsorblock() {
         const categories = [];
@@ -49,4 +49,4 @@
     // Initialize on page load
     updateSponsorblock();
 </script>
-{% endmacro %}
+{% endcomponent sponsorblock_js %}

@@ -77,6 +77,10 @@ fn renders_status_with_download_metrics() {
         body.contains("Restart VPN"),
         "Response body should include the manual VPN restart control when enabled"
     );
+    assert!(
+        body.contains("1 minutes ago"),
+        "Last success age should round up to whole minutes"
+    );
 
     let min_success_age_minutes = MIN_SUCCESS_AGE_BEFORE_RESTART.as_secs().div_ceil(60);
     assert!(

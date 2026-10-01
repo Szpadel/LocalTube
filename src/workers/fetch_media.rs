@@ -152,7 +152,11 @@ fn schedule_media_retry(ctx: AppContext, media_id: i32) {
         },
         move || {
             let ctx = action_ctx.clone();
-            async move { FetchMediaWorker::perform_later(&ctx, FetchMediaWorkerArgs { media_id }).await }
+            async move {
+                FetchMediaWorker::perform_later(&ctx, FetchMediaWorkerArgs { media_id })
+                    .await
+                    .map(|_| ())
+            }
         },
     );
 }

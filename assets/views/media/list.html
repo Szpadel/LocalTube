@@ -9,15 +9,15 @@ Media Library
 <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
     {% for item in items %}
     <div class="bg-white dark:bg-gray-900 rounded-lg shadow p-6 border border-transparent dark:border-gray-800">
-        {% if item.0.metadata %}
-            {% set video = item.0.metadata %}
+        {% if item[0].metadata %}
+            {% set video = item[0].metadata %}
             <h2 class="text-xl font-semibold text-red-500 dark:text-red-400 mb-4">
-                <a href="/medias/{{ item.0.id }}" class="hover:underline">{{ video.title }}</a>
+                <a href="/medias/{{ item[0].id }}" class="hover:underline">{{ video.title }}</a>
             </h2>
             <p class="mb-2 text-gray-700 dark:text-gray-200"><span class="font-bold">Uploader:</span>
-                {% if item.1 and item.1.metadata %}
-                    <a href="/sources/{{ item.1.id }}" class="text-red-500 dark:text-red-400 hover:underline">
-                        {{ item.1.metadata.uploader }}
+                {% if item[1] and item[1].metadata %}
+                    <a href="/sources/{{ item[1].id }}" class="text-red-500 dark:text-red-400 hover:underline">
+                        {{ item[1].metadata.uploader }}
                     </a>
                 {% else %}
                     Unknown
@@ -26,16 +26,16 @@ Media Library
             {% if video.description %}
                 <p class="mb-2 text-sm text-gray-600 dark:text-gray-400 line-clamp-3">{{ video.description }}</p>
             {% endif %}
-            <p class="mb-2 text-gray-700 dark:text-gray-200"><span class="font-bold">Duration:</span> {{ video.duration / 60 | round }}m</p>
+            <p class="mb-2 text-gray-700 dark:text-gray-200"><span class="font-bold">Duration:</span> {{ (video.duration / 60) | round | int }}m</p>
             <p class="mb-2 text-gray-700 dark:text-gray-200"><span class="font-bold">Platform:</span> {{ video.extractor_key }}</p>
             <p class="mb-4 text-gray-700 dark:text-gray-200"><span class="font-bold">Added:</span> {{ video.timestamp | date(format="%Y-%m-%d") }}</p>
         {% else %}
             <p class="text-gray-500 dark:text-gray-400">Metadata not available</p>
         {% endif %}
         <div class="flex space-x-4">
-            <a href="/medias/{{ item.0.id }}/edit" class="text-red-500 dark:text-red-400 hover:underline">Edit</a>
-            <a href="/medias/{{ item.0.id }}" class="text-red-500 dark:text-red-400 hover:underline">View</a>
-            <form method="post" action="/medias/{{ item.0.id }}/redownload" class="inline">
+            <a href="/medias/{{ item[0].id }}/edit" class="text-red-500 dark:text-red-400 hover:underline">Edit</a>
+            <a href="/medias/{{ item[0].id }}" class="text-red-500 dark:text-red-400 hover:underline">View</a>
+            <form method="post" action="/medias/{{ item[0].id }}/redownload" class="inline">
                 <button type="submit"
                         class="text-red-500 dark:text-red-400 hover:underline cursor-pointer bg-transparent border-none p-0 font-inherit"
                         onclick="return confirm('Are you sure you want to redownload this media? This will delete the current file and download it again.')">
