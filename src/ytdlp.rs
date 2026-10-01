@@ -497,15 +497,11 @@ fn parse_upload_date(value: &str) -> Option<i64> {
 
 /// Streams media list from a given URL
 ///
-/// # Panics
-///
-/// Panics if spawning the `yt-dlp` process or capturing its output fails.
-///
 /// # Note
 ///
-/// The returned stream yields `Ok(VideoMetadata)` entries. If the process
-/// exits non-zero or produces zero items, a single `Err` is sent before
-/// closing the channel.
+/// The returned stream yields `Ok(VideoMetadata)` entries. If yt-dlp cannot
+/// start, exits non-zero, or produces zero items, a single `Err` is sent
+/// before closing the channel.
 ///
 /// # Note
 ///
@@ -515,10 +511,19 @@ pub async fn stream_media_list(
     url: &str,
     order: MediaListOrder,
 ) -> tokio::sync::mpsc::Receiver<Result<VideoMetadata>> {
+    stream_media_list_from(yt_dlp_path(), url, order)
+}
+
+/// Runs [`stream_media_list`] with the yt-dlp binary at `binary`.
+fn stream_media_list_from(
+    binary: PathBuf,
+    url: &str,
+    order: MediaListOrder,
+) -> tokio::sync::mpsc::Receiver<Result<VideoMetadata>> {
     let (tx, rx) = tokio::sync::mpsc::channel(8);
     let url = url.to_string();
     tokio::spawn(async move {
-        let mut cmd = Command::new(yt_dlp_path())
+        let spawned = Command::new(&binary)
             .process_group(0)
             .arg("--dump-json")
             .arg("--simulate")
@@ -533,8 +538,18 @@ pub async fn stream_media_list(
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped())
             .kill_on_drop(true)
-            .spawn()
-            .expect("Failed to spawn yt-dlp");
+            .spawn();
+        let mut cmd = match spawned {
+            Ok(child) => child,
+            Err(error) => {
+                // The receiver treats a closed channel as the end of the list,
+                // so a start failure must arrive as an `Err` item. A send fails
+                // only when the receiver is gone, and then nobody needs it.
+                let message = format!("Failed to start {}: {error}", binary.display());
+                let _ = tx.send(Err(Error::string(&message))).await;
+                return;
+            }
+        };
 
         let stdout = cmd.stdout.take().expect("Failed to get yt-dlp stdout");
         let stderr = cmd.stderr.take().expect("Failed to get yt-dlp stderr");
@@ -708,8 +723,8 @@ pub async fn download_media(
 mod tests {
     use super::{
         detect_list_order, extract_list_tabs, flatten_probe_entries, parse_stdout_json,
-        stream_should_fail, update_binary_atomically, ProbeEntry, ProbeOutput, SourceListOrder,
-        SourceListTabOption,
+        stream_media_list_from, stream_should_fail, update_binary_atomically, MediaListOrder,
+        ProbeEntry, ProbeOutput, SourceListOrder, SourceListTabOption,
     };
     use serial_test::serial;
     use std::os::unix::{fs::PermissionsExt, process::ExitStatusExt};
@@ -740,8 +755,33 @@ mod tests {
             .expect("script should be made executable");
     }
 
-    // Serial: a process start in a parallel test can inherit the write handle
-    // of a new script for a moment, and then the start of that script fails.
+    // The tests below start processes, so they are serial. A process start in
+    // a parallel test can inherit the write handle of a new script for a
+    // moment, and then the start of that script fails.
+    #[tokio::test]
+    #[serial]
+    async fn stream_media_list_reports_start_failure_as_error() {
+        let scratch = ScratchDir::new();
+        let missing_binary = scratch.0.join("yt-dlp");
+
+        let mut stream = stream_media_list_from(
+            missing_binary,
+            "https://example.com/list",
+            MediaListOrder::Original,
+        );
+        let item = stream
+            .recv()
+            .await
+            .expect("a start failure must arrive as an item");
+
+        let error = item.err().expect("the item must be an error").to_string();
+        assert!(error.starts_with("Failed to start "), "{error}");
+        assert!(
+            stream.recv().await.is_none(),
+            "the stream must end after the error"
+        );
+    }
+
     #[tokio::test]
     #[serial]
     async fn failed_update_keeps_installed_binary() {
