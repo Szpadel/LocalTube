@@ -81,9 +81,7 @@ impl BackgroundWorker<FetchMediaWorkerArgs> for FetchMediaWorker {
             );
 
             // This is where errors are most likely to happen
-            let file_path = crate::ytdlp::download_media(&metadata.original_url, &source)
-                .await
-                .map_err(|e| Error::string(&format!("Download failed: {e}")))?;
+            let file_path = crate::ytdlp::download_media(&metadata.original_url, &source).await?;
 
             info!(
                 "{} Downloaded {} to {}",
@@ -110,7 +108,7 @@ impl BackgroundWorker<FetchMediaWorkerArgs> for FetchMediaWorker {
             // Report the error if we have a task
             if let Some(t) = task.take() {
                 let error_msg = match e {
-                    Error::Message(msg) => msg.clone(),
+                    Error::Message(msg) => format!("Download failed: {msg}"),
                     _ => format!(
                         "Download failed: {}",
                         e.to_string().split('\n').next().unwrap_or("Unknown error")
